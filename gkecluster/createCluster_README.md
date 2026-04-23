@@ -13,7 +13,7 @@ It provisions:
 - A Cloud Router and NAT gateway for private node internet access.
 - An Artifact Registry repository for Docker images.
 - A GKE cluster with private nodes and multi-networking enabled.
-- A GPU node pool with RTX 6000 Ada GPUs (default 2 nodes, scale to 3).
+- A GPU node pool with RTX 6000 Blackwell (SM120) GPUs (default 2 nodes, scale to 3).
 - A Benchmark Client node pool for running load tests.
 
 ## Prerequisites
