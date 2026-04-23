@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sglang-benchmark-client
+spec:
+  # This forces the pod onto your benchmark-client-pool!
+  nodeSelector:
+    workload: benchmark-client
+  restartPolicy: Never
+  containers:
+  - name: benchmark
+    image: docker.io/lmsysorg/sglang:v0.5.10.post1
+    command:
+    - /bin/bash
+    - -c
+    args:
+    - |
+      echo "Starting SGLang 512-Concurrency Benchmark..."
+      
+      # Pointing to the internal Kubernetes DNS name of your GPU server
+      API_URL="http://sglang-serving-on-master-opt:8000"
+      MODEL_NAME="deepseek-ai/DeepSeek-V3.2"
+      CONCURRENCY=512
+      INPUT_LEN=1024
+      OUTPUT_LEN=8192
+      NUM_PROMPTS=1536
+
+      python3 -m sglang.bench_serving \
+          --backend sglang-oai \
+          --base-url $API_URL \
+          --model $MODEL_NAME \
+          --dataset-name random \
+          --random-input-len $INPUT_LEN \
+          --random-output-len $OUTPUT_LEN \
+          --num-prompts $NUM_PROMPTS \
+          --max-concurrency $CONCURRENCY \
+          --output-file /workspace/results_dsv2_3.json \
+          --apply-chat-template
+
+      echo "Benchmark complete! Sleeping so you can extract the results..."
+      sleep infinity
