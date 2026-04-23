@@ -1,0 +1,116 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sglang-ds32-job-v2
+spec:
+  template:
+    spec:
+      hostNetwork: true
+      hostIPC: true
+      nodeSelector:
+        cloud.google.com/gke-nodepool: g4-384-np-1
+      containers:
+      - name: sglang-container
+        image: lmsysorg/sglang:dev-cu13
+        command:
+        - python3
+        - -m
+        - sglang.launch_server
+        args:
+        - --model-path
+        - nvidia/DeepSeek-V3.2-NVFP4
+        - --trust-remote-code
+        - --tp-size
+        - "8"
+        - --dp-size
+        - "8"
+        - --enable-dp-attention
+        - --quantization
+        - modelopt_fp4
+        - --moe-runner-backend
+        - flashinfer_cutlass
+        - --fp4-gemm-backend
+        - flashinfer_cudnn
+        - --kv-cache-dtype
+        - bf16
+        - --attention-backend
+        - flashinfer
+        - --disable-custom-all-reduce
+        - --enable-flashinfer-allreduce-fusion
+        - --speculative-algorithm
+        - EAGLE
+        - --speculative-num-steps
+        - "3"
+        - --speculative-eagle-topk
+        - "1"
+        - --speculative-num-draft-tokens
+        - "4"
+        - --mem-fraction-static
+        - "0.85"
+        - --cuda-graph-max-bs
+        - "128"
+        - --max-running-requests
+        - "768"
+        - --chunked-prefill-size
+        - "16384"
+        - --context-length
+        - "131072"
+        - --page-size
+        - "64"
+        - --enable-mixed-chunk
+        - --tool-call-parser
+        - deepseekv32
+        - --reasoning-parser
+        - deepseek-v3
+        - --enable-metrics
+        - --host
+        - 0.0.0.0
+        - --port
+        - "30000"
+        env:
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        - name: SGLANG_ENABLE_DEEP_GEMM
+          value: "0"
+        - name: SGLANG_DISABLE_DEEP_GEMM
+          value: "1"
+        - name: SGLANG_ENABLE_SPEC_V2
+          value: "1"
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: NCCL_P2P_LEVEL
+          value: "SYS"
+        - name: NCCL_MIN_NCHANNELS
+          value: "8"
+        - name: NCCL_ALLOC_P2P_NET_LL_BUFFERS
+          value: "1"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: FLASHINFER_DISABLE_VERSION_CHECK
+          value: "1"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /root/.cache/huggingface
+          name: hf-cache
+        - mountPath: /root/.cache/flashinfer
+          name: flashinfer-cache
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+      - name: hf-cache
+        emptyDir: {}
+      - name: flashinfer-cache
+        emptyDir: {}
+      restartPolicy: Never
