@@ -1,0 +1,137 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: distributed-sglang-opt
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: distributed-sglang-opt
+  serviceName: ""
+  template:
+    metadata:
+      labels:
+        app: distributed-sglang-opt
+    spec:
+      containers:
+      - name: sglang-container
+        image: lmsysorg/sglang:dev-cu13
+        imagePullPolicy: Always
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          python3 -m sglang.launch_server \
+              --model deepseek-ai/DeepSeek-V3.2 \
+              --tensor-parallel-size 8 \
+              --pipeline-parallel-size 2 \
+              --dp-size 8 \
+              --enable-dp-attention \
+              --nnodes 2 \
+              --node-rank $POD_INDEX \
+              --port 8000 \
+              --dist-init-addr sglang-master-pod-opt:5000 \
+              --trust-remote-code \
+              --reasoning-parser deepseek-v3 \
+              --tool-call-parser deepseekv32 \
+              --mem-fraction-static 0.88 \
+              --chunked-prefill-size 16384 \
+              --fp8-gemm-backend triton \
+              --attention-backend flashinfer \
+              --nsa-prefill-backend tilelang \
+              --nsa-decode-backend tilelang \
+              --cuda-graph-max-bs 128 \
+              --max-running-requests 768 \
+              --kv-cache-dtype bf16 \
+              --disable-custom-all-reduce \
+              --enable-flashinfer-allreduce-fusion \
+              --page-size 64 \
+              --host 0.0.0.0
+
+        env:
+        - name: POD_INDEX
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: NCCL_DEBUG
+          value: INFO
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0,eth1"
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: NCCL_P2P_LEVEL
+          value: "SYS"
+        - name: NCCL_SOCKET_NTHREADS
+          value: "8"
+        - name: NCCL_NSOCKS_PERTHREAD
+          value: "8"
+        - name: NCCL_MIN_NCHANNELS
+          value: "8"
+        - name: NCCL_ALLOC_P2P_NET_LL_BUFFERS
+          value: "1"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: SGLANG_ENABLE_DEEP_GEMM
+          value: "0"
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /root/.cache/huggingface
+          name: hf-cache
+        securityContext:
+          privileged: true  
+      hostNetwork: false
+      dnsPolicy: ClusterFirstWithHostNet
+      volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+        name: dshm
+      - name: hf-cache
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-master-pod-opt
+spec:
+  clusterIP: None
+  #type: ClusterIP
+  selector:
+    app: distributed-sglang-opt
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: dist-port
+    port: 5000
+    targetPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-serving-on-master-opt
+spec:
+  type: NodePort
+  selector:
+    app: distributed-sglang-opt
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: serving
+    port: 8000
+    targetPort: 8000
+  - name: metrics
+    port: 8080
+    targetPort: 8080
