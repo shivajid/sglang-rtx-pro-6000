@@ -1,36 +1,25 @@
 # sglang-rtx-pro-6000
 
-This repo is for showcasing optimized GKE configs for inferencing state-of-the-art LLM Models on GCP G4 machines.
+Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances using SGLang.
 
-- **Infrastructure**: Powered by [GCP G4 Machine Architecture](GCP_G4_Specs.md) featuring NVIDIA RTX PRO 6000 Blackwell (SM120) GPUs.
-- **Models**:
-  - DeepSeekv3-2
-     - Base FP8
-     - NVFP4
-  - KimiK 2.5
-     - Base int4
-  - GLM 5.1
-     - fp8 (coming)
-
-The base models are run on 2-node GCP G4 machines. G4 machines are based on NVIDIA's RTX PRO 6000 Blackwell server edition GPUs, offering massive 96GB VRAM and native FP4 support.
-
-We have used **SGLang** as the serving framework. The SGLang versions used are `lmsysorg/sglang:dev-cu13` and `lmsys/sglang:0.5.10.post1`.
-
-
-
+## Infrastructure
+- **GPU**: NVIDIA RTX PRO 6000 Blackwell (SM120)
+- **Architecture Details**: [Technical Specifications: GCP G4](GCP_G4_Specs.md)
+- **Serving Framework**: [SGLang](https://github.com/sglang-project/sglang) (`dev-cu13`, `0.5.10.post1`)
 
 ## Project Structure
 
-- `models/`: Model-specific SGLang job configurations and results.
-  - `DeepSeekv3-2/`: Configs for DeepSeek-V3/V2.5 models (FP8 and NVP4).
-  - `KimiK2.5/`: Configs for Kimi-K2.5.
-  - `GLM5.1/`: Configs for GLM-5.1.
-- `benchmarks/`: General benchmark definitions and scripts.
+- `models/`: Model-specific SGLang job configurations and benchmarks.
+  - `DeepSeekv3-2/`: Configs for DeepSeek-V3 and V2.5 (FP8 and NVFP4).
+  - `KimiK2.5/`: Configs for Kimi-K2.5 (INT4).
+  - `GLM5.1/`: Configs for GLM-5.1 (FP8 - In Progress).
+- `benchmarks/`: Global benchmark definitions and performance scripts.
+- `GCP_G4_Specs.md`: Detailed hardware and infrastructure specifications.
 
 ## Usage
 
-Documentation for specific model setups can be found within their respective directories under `models/`.
+Model-specific deployment instructions and performance results are located within the `models/` directory.
 
 ## Contributing
 
-This repository is a work in progress as new models and optimizations are added.
+This repository is updated as new optimization techniques (e.g., native FP4 serving) and models are validated on the G4 architecture.
