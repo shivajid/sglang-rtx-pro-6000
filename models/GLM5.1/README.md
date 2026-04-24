@@ -8,8 +8,11 @@ GLM-5.1 is an advanced language model optimized for high-throughput inference. T
 ## Serving Configuration
 - **Model**: `zai-org/GLM-5.1-FP8`
 - **Setup**: 2x `g4-standard-384` (16x RTX PRO 6000)
-- **Parallelism**: TP8, PP2
+- **Parallelism**: Tensor Parallel (TP) 8, Pipeline Parallel (PP) 2, Data Parallel (DP) 8
 - **Quantization**: FP8
+- **Attention Backend**: `flashinfer`
+- **KV Cache**: `bfloat16`
+- **Memory Fraction**: 0.90
 - **Serving Image**: `lmsysorg/sglang:dev-cu13`
 
 ## Benchmark Results
