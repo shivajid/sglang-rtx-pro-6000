@@ -25,7 +25,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
     - `fp8/`: Optimized 2-node FP8 serving setup.
     - `nvp4/`: Native FP4 serving using `modelopt_fp4` with EAGLE speculative decoding.
   - `GLM5.1/`: Optimized configurations and results for GLM-5.1 FP8.
-  - `KimiK2.5/`: Configurations for Kimi-K2.5 (INT4/FP8).
+  - `KimiK2.5/`: Configurations for Kimi-K2.5.
 - `gkecluster/`: Infrastructure-as-Code for GKE provisioning.
   - `createCluster_template.sh`: Automated script to provision VPC, networking, and GKE clusters optimized for Blackwell G4.
   - `createCluster_README.md`: Detailed setup and usage instructions for the GKE template.
