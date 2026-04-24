@@ -10,14 +10,26 @@ DeepSeek-V3 is a strong Mixture-of-Experts (MoE) model. These configurations dem
 ### 1. NVFP4 (Single Node - Optimized)
 - **Model**: `nvidia/DeepSeek-V3.2-NVFP4`
 - **Setup**: 1x `g4-standard-384` (8x RTX PRO 6000)
-- **Quantization**: `modelopt_fp4`
-- **Speculative Decoding**: EAGLE (3 steps)
+- **Quantization**: Native NVFP4 (`modelopt_fp4`)
+- **Speculative Decoding**: EAGLE (3 steps, topk=1, 4 draft tokens)
+- **Backends**: 
+  - Attention: `flashinfer`
+  - MoE: `flashinfer_cutlass`
+  - FP4 GEMM: `flashinfer_cudnn`
+- **KV Cache**: `bf16`
+- **Memory Fraction**: 0.85
 - **Manifest**: `nvp4/sglang-ds32-job-v2.yaml`
 
 ### 2. FP8 (Distributed - 2 Nodes)
 - **Model**: `deepseek-ai/DeepSeek-V3.2`
 - **Setup**: 2x `g4-standard-384` (16x RTX PRO 6000)
-- **Parallelism**: TP8, PP2
+- **Parallelism**: Tensor Parallel (TP) 8, Pipeline Parallel (PP) 2, Data Parallel (DP) 8
+- **Backends**: 
+  - Attention: `flashinfer`
+  - FP8 GEMM: `triton`
+  - NSA: `tilelang`
+- **KV Cache**: `bf16`
+- **Memory Fraction**: 0.88
 - **Manifest**: `fp8/sglang-2node-setup-optimized.yaml`
 
 ## Benchmark Results
