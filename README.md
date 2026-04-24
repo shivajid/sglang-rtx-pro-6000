@@ -14,9 +14,11 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 | [DeepSeek-V3.2](https://huggingface.co/deepseek-ai/DeepSeek-V3.2) | FP8 | 2 Nodes (16x RTX 6000) | 2962.79 | 3324.21 | 4951.00 | 149.29 |
 | [DeepSeek-V3.2](https://huggingface.co/nvidia/DeepSeek-V3.2-NVFP4) | NVFP4 | 1 Node (8x RTX 6000) | 2675.33 | 3012.42 | 2046.00 | 106.03 |
 | [GLM-5.1](https://huggingface.co/zai-org/GLM-5.1-FP8) | FP8 | 2 Nodes (16x RTX 6000) | 2785.55 | 3125.35 | 4092.00 | 155.26 |
-| [Kimi-K2.5](https://huggingface.co/moonshotai/Kimi-K2.5) | INT4 | 2 Nodes (16x RTX 6000) | 3069.15 | 3443.55 | 6889.00 | 147.45 |
+| [Kimi-K2.5](https://huggingface.co/moonshotai/Kimi-K2.5) | INT4* | 2 Nodes (16x RTX 6000) | 3069.15 | 3443.55 | 6889.00 | 147.45 |
 
 *Benchmarks conducted using `inf` request rate and 512 max concurrency. Tests utilized a random dataset with 1024 input tokens and 8192 output tokens (1536 total prompts). The load generator was isolated on a dedicated CPU-only node pool to ensure zero interference with GPU performance.*
+
+*\*Kimi-K2.5 uses native INT4 quantization for model weights and FP8 for the KV cache to optimize memory efficiency and inference speed.*
 
 ## Project Structure
 
@@ -29,7 +31,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 - `gkecluster/`: Infrastructure-as-Code for GKE provisioning.
   - `createCluster_template.sh`: Automated script to provision VPC, networking, and GKE clusters optimized for Blackwell G4.
   - `createCluster_README.md`: Detailed setup and usage instructions for the GKE template.
-- `benchmarks/`: Global benchmark definitions and performance scripts.
+- `benchmarking_scripts/`: Global benchmark definitions and performance scripts.
   - `benchmark-dsv2.yaml`: Load generator config for DeepSeek.
   - `benchmark-glm51.yaml`: Load generator config for GLM-5.1.
 - `gcp_g4_specs.md`: Detailed hardware and infrastructure specifications.

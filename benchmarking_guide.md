@@ -39,13 +39,13 @@ Look for `The server is fired up and ready!` in the logs.
 
 ## Step 2: Run the Benchmark Client
 
-Once the server is ready, deploy the benchmark client pod located in the `benchmarks/` directory.
+Once the server is ready, deploy the benchmark client pod located in the `benchmarking_scripts/` directory.
 
 ### Example: Benchmarking DeepSeek-V3.2
-1. Update the `API_URL` in `benchmarks/benchmark-dsv2.yaml` if necessary (it should point to the serving service name).
+1. Update the `API_URL` in `benchmarking_scripts/benchmark-dsv2.yaml` if necessary (it should point to the serving service name).
 2. Deploy the client:
    ```bash
-   kubectl apply -f benchmarks/benchmark-dsv2.yaml
+   kubectl apply -f benchmarking_scripts/benchmark-dsv2.yaml
    ```
 
 ### Monitoring the Benchmark
