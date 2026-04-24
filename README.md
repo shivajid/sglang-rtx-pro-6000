@@ -59,7 +59,7 @@ Detailed performance logs, including TTFT/TPOT latency distributions and through
 
 ## Usage
 
-For detailed instructions on deploying models and running benchmarks, see the [Benchmarking Guide](./BENCHMARK_GUIDE.md).
+For detailed instructions on deploying models and running benchmarks, see the [Benchmarking Guide](./benchmarking_guide.md).
 
 Each model directory also contains a dedicated `README.md` with specific optimization details and attribution.
 
