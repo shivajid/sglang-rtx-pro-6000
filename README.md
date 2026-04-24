@@ -48,9 +48,18 @@ The `gkecluster` directory contains a comprehensive template for provisioning a 
 - **Blackwell Node Pools**: Automated creation of `g4-standard-384` pools with 8x RTX PRO 6000 Blackwell GPUs.
 - **Benchmarking Isolation**: Dedicated node pools for load generators to ensure clean performance metrics.
 
+## Viewing Detailed Benchmark Results
+
+Detailed performance logs, including TTFT/TPOT latency distributions and throughput metrics, are located within each model's `results` directory:
+
+- **DeepSeek-V3.2 (FP8)**: `models/DeepSeekv3-2/fp8/results/benchmark_results.md`
+- **DeepSeek-V3.2 (NVFP4)**: `models/DeepSeekv3-2/nvp4/results/benchmark_results.md`
+- **GLM-5.1 (FP8)**: `models/GLM5.1/results/benchmark-results.md`
+- **Kimi-K2.5 (FP8)**: `models/KimiK2.5/results/benchmark_results.md`
+
 ## Usage
 
-Model-specific deployment instructions and performance results are located within the `models/` directory.
+Each model directory contains a dedicated `README.md` with deployment instructions, optimization details, and attribution.
 
 ## Contributing
 
