@@ -59,7 +59,9 @@ Detailed performance logs, including TTFT/TPOT latency distributions and through
 
 ## Usage
 
-Each model directory contains a dedicated `README.md` with deployment instructions, optimization details, and attribution.
+For detailed instructions on deploying models and running benchmarks, see the [Benchmarking Guide](./BENCHMARK_GUIDE.md).
+
+Each model directory also contains a dedicated `README.md` with specific optimization details and attribution.
 
 ## Contributing
 
