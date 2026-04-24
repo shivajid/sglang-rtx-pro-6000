@@ -16,7 +16,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 | GLM-5.1 | FP8 | 2 Nodes (16x RTX 6000) | 2785.55 | 3125.35 | 4092.00 | 155.26 |
 | Kimi-K2.5 | FP8 | 2 Nodes (16x RTX 6000) | 3069.15 | 3443.55 | 6889.00 | 147.45 |
 
-*Benchmarks conducted using `inf` request rate and 512 max concurrency.*
+*Benchmarks conducted using `inf` request rate and 512 max concurrency. Tests utilized a random dataset with 1024 input tokens and 8192 output tokens (1536 total prompts). The load generator was isolated on a dedicated CPU-only node pool to ensure zero interference with GPU performance.*
 
 ## Project Structure
 
