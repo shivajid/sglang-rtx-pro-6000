@@ -9,7 +9,8 @@ Kimi-K2.5 is a large-scale Mixture-of-Experts (MoE) model designed for high-perf
 The model is served using a 2-node distributed SGLang setup:
 - **Tensor Parallelism**: 8
 - **Pipeline Parallelism**: 2
-- **Quantization**: FP8 (KV Cache)
+- **Quantization**: Native INT4
+- **KV Cache**: FP8 (e5m2)
 - **Serving Image**: `lmsysorg/sglang:v0.5.10.post1`
 
 The configuration uses specialized reasoning and tool-call parsers optimized for Kimi's architecture.
