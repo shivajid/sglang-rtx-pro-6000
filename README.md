@@ -14,6 +14,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 | DeepSeek-V3.2 | FP8 | 2 Nodes (16x RTX 6000) | 2962.79 | 3324.21 | 4951.00 | 149.29 |
 | DeepSeek-V3.2 | NVFP4 | 1 Node (8x RTX 6000) | 2675.33 | 3012.42 | 2046.00 | 106.03 |
 | GLM-5.1 | FP8 | 2 Nodes (16x RTX 6000) | 2785.55 | 3125.35 | 4092.00 | 155.26 |
+| Kimi-K2.5 | FP8 | 2 Nodes (16x RTX 6000) | 3069.15 | 3443.55 | 6889.00 | 147.45 |
 
 *Benchmarks conducted using `inf` request rate and 512 max concurrency.*
 
