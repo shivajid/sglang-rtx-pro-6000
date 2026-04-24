@@ -1,4 +1,4 @@
-# sglang-rtx-pro-6000
+# OSS Model Benchmarks on GCP G4
 
 Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances using SGLang.
 
