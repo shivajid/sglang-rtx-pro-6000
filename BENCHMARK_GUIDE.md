@@ -67,5 +67,5 @@ kubectl cp sglang-benchmark-client:/workspace/results_dsv2_3.json ./results.json
 
 ## Troubleshooting
 
-- **OOM Errors**: If the pod fails with Out-Of-Memory, check the `mem-fraction-static` flag in the YAML. Blackwell G4 instances have 192GB of VRAM per node; ensure the model fits within the allocated memory.
+- **OOM Errors**: If the pod fails with Out-Of-Memory, check the `mem-fraction-static` flag in the YAML. Ensure the model fits within the allocated memory.
 - **Networking**: Multi-node setups require the VPC to be configured with high MTU (8896). Ensure you used the `createCluster_template.sh` for infrastructure setup.
