@@ -52,10 +52,10 @@ The `gkecluster` directory contains a comprehensive template for provisioning a 
 
 Detailed performance logs, including TTFT/TPOT latency distributions and throughput metrics, are located within each model's `results` directory:
 
-- **DeepSeek-V3.2 (FP8)**: [models/DeepSeekv3-2/fp8/results/benchmark_results.md](./models/DeepSeekv3-2/fp8/results/benchmark_results.md)
-- **DeepSeek-V3.2 (NVFP4)**: [models/DeepSeekv3-2/nvp4/results/benchmark_results.md](./models/DeepSeekv3-2/nvp4/results/benchmark_results.md)
-- **GLM-5.1 (FP8)**: [models/GLM5.1/results/benchmark-results.md](./models/GLM5.1/results/benchmark-results.md)
-- **Kimi-K2.5 (FP8)**: [models/KimiK2.5/results/benchmark_results.md](./models/KimiK2.5/results/benchmark_results.md)
+- [DeepSeek-V3.2 (FP8): models/DeepSeekv3-2/fp8/results/benchmark_results.md](./models/DeepSeekv3-2/fp8/results/benchmark_results.md)
+- [DeepSeek-V3.2 (NVFP4): models/DeepSeekv3-2/nvp4/results/benchmark_results.md](./models/DeepSeekv3-2/nvp4/results/benchmark_results.md)
+- [GLM-5.1 (FP8): models/GLM5.1/results/benchmark-results.md](./models/GLM5.1/results/benchmark-results.md)
+- [Kimi-K2.5 (FP8): models/KimiK2.5/results/benchmark_results.md](./models/KimiK2.5/results/benchmark_results.md)
 
 ## Usage
 
