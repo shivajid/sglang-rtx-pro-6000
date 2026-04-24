@@ -5,7 +5,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 ## Infrastructure
 - **GPU**: NVIDIA RTX PRO 6000 Blackwell (SM120)
 - **Architecture Details**: [Technical Specifications: GCP G4](./gcp_g4_specs.md)
-- **Serving Framework**: [SGLang](https://github.com/sglang-ai/sglang) (`dev-cu13`, `0.5.10.post1`)
+- **Serving Framework**: [SGLang](https://github.com/sgl-project/sglang) (`dev-cu13`, `0.5.10.post1`)
 
 ## Performance Benchmarks (Latest)
 
