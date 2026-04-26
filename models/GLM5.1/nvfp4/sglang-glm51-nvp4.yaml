@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sglang-glm51-hf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sglang-glm51-hf
+  serviceName: "sglang-glm51-hf-service"
+  template:
+    metadata:
+      labels:
+        app: sglang-glm51-hf
+    spec:
+      hostNetwork: true
+      hostIPC: true
+      nodeSelector:
+        cloud.google.com/gke-nodepool: g4-384-np-1
+      containers:
+      - name: sglang-container
+        image: voipmonitor/sglang:cu130
+        imagePullPolicy: IfNotPresent
+        command:
+        - python3
+        - -m
+        - sglang.launch_server
+        args:
+        - --model-path
+        - lukealonso/GLM-5.1-NVFP4
+        - --served-model-name
+        - GLM-5.1
+        - --reasoning-parser
+        - glm45
+        - --tool-call-parser
+        - glm47
+        - --tp-size
+        - "8"
+        - --trust-remote-code
+        - --quantization
+        - modelopt_fp4
+        - --kv-cache-dtype
+        - bf16
+        - --fp4-gemm-backend
+        - b12x
+        - --attention-backend
+        - flashinfer
+        - --moe-runner-backend
+        - b12x
+        - --disable-shared-experts-fusion
+        - --mem-fraction-static
+        - "0.89"
+        - --max-running-requests
+        - "768"
+        - --cuda-graph-max-bs
+        - "128"
+        - --speculative-algorithm
+        - NEXTN
+        - --speculative-num-steps
+        - "3"
+        - --speculative-eagle-topk
+        - "1"
+        - --speculative-num-draft-tokens
+        - "4"
+        - --host
+        - 0.0.0.0
+        - --port
+        - "30000"
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        - name: OMP_NUM_THREADS
+          value: "16"
+        - name: SGLANG_ENABLE_SPEC_V2
+          value: "True"
+        - name: NCCL_DEBUG
+          value: INFO
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0,eth1"
+        - name: NCCL_SOCKET_NTHREADS
+          value: "8"
+        - name: NCCL_NSOCKS_PERTHREAD
+          value: "8"
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: NCCL_P2P_LEVEL
+          value: "SYS"
+        - name: NCCL_MIN_NCHANNELS
+          value: "8"
+        - name: NCCL_ALLOC_P2P_NET_LL_BUFFERS
+          value: "1"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: FLASHINFER_DISABLE_VERSION_CHECK
+          value: "1"
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        - name: SGLANG_ENABLE_SPEC_V2_CUDA_GRAPH_COMPILE
+          value: "true"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /root/.cache/huggingface
+          name: hf-cache
+        - mountPath: /root/.cache/flashinfer
+          name: flashinfer-cache
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+      - name: hf-cache
+        emptyDir: {}
+      - name: flashinfer-cache
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-serving-glm51-hf
+spec:
+  type: NodePort
+  selector:
+    app: sglang-glm51-hf
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: serving
+    port: 30000
+    targetPort: 30000
+
