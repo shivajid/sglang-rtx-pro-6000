@@ -6,6 +6,8 @@ Optimized configurations and benchmarks for [Zhipu AI's GLM-5.1](https://hugging
 GLM-5.1 is an advanced language model optimized for high-throughput inference. These configurations leverage FP8 quantization for efficient distributed serving.
 
 ## Serving Configuration
+
+### FP8 (2-Node Setup)
 - **Model**: `zai-org/GLM-5.1-FP8`
 - **Setup**: 2x `g4-standard-384` (16x RTX PRO 6000)
 - **Parallelism**: Tensor Parallel (TP) 8, Pipeline Parallel (PP) 2, Data Parallel (DP) 8
@@ -14,6 +16,17 @@ GLM-5.1 is an advanced language model optimized for high-throughput inference. T
 - **KV Cache**: `bfloat16`
 - **Memory Fraction**: 0.90
 - **Serving Image**: `lmsysorg/sglang:dev-cu13`
+
+### NVFP4 (1-Node Setup)
+- **Model**: `lukealonso/GLM-5.1-NVFP4`
+- **Setup**: 1x `g4-standard-384` (8x RTX PRO 6000)
+- **Parallelism**: Tensor Parallel (TP) 8
+- **Quantization**: `modelopt_fp4`
+- **Speculative Algorithm**: `NEXTN` (Steps: 3, Draft Tokens: 4)
+- **Attention Backend**: `flashinfer`
+- **KV Cache**: `bfloat16`
+- **Memory Fraction**: 0.88
+- **Serving Image**: `voipmonitor/sglang:cu130`
 
 ## Benchmark Results
 
