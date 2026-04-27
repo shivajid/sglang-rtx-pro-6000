@@ -52,9 +52,6 @@ spec:
         - "0.88"
         - --max-running-requests
         - "512"
-        - --chunked-prefill-size
-        - "16384"
-        - --enable-mixed-chunk
         - --cuda-graph-max-bs
         - "64"
         - --disable-custom-all-reduce
