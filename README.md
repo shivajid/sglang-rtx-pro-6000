@@ -14,6 +14,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 | [DeepSeek-V3.2](https://huggingface.co/deepseek-ai/DeepSeek-V3.2) | FP8 | 2 Nodes (16x RTX 6000) | 2962.79 | 3324.21 | 4951.00 | 149.29 |
 | [DeepSeek-V3.2](https://huggingface.co/nvidia/DeepSeek-V3.2-NVFP4) | NVFP4 | 1 Node (8x RTX 6000) | 2675.33 | 3012.42 | 2046.00 | 106.03 |
 | [GLM-5.1](https://huggingface.co/zai-org/GLM-5.1-FP8) | FP8 | 2 Nodes (16x RTX 6000) | 2785.55 | 3125.35 | 4092.00 | 155.26 |
+| [GLM-5.1](https://huggingface.co/lukealonso/GLM-5.1-NVFP4) | NVFP4 | 1 Node (8x RTX 6000) | 1462.73 | 1641.16 | 950.00 | 107.02 |
 | [Kimi-K2.5](https://huggingface.co/moonshotai/Kimi-K2.5) | INT4* | 2 Nodes (16x RTX 6000) | 3069.15 | 3443.55 | 6889.00 | 147.45 |
 
 *Benchmarks conducted using `inf` request rate and 512 max concurrency. Tests utilized a random dataset with 1024 input tokens and 8192 output tokens (1536 total prompts). The load generator was isolated on a dedicated CPU-only node pool to ensure zero interference with GPU performance.*
@@ -26,7 +27,9 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
   - `DeepSeekv3-2/`: Configs for DeepSeek-V3 and V2.5.
     - `fp8/`: Optimized 2-node FP8 serving setup.
     - `nvp4/`: Native FP4 serving using `modelopt_fp4` with EAGLE speculative decoding.
-  - `GLM5.1/`: Optimized configurations and results for GLM-5.1 FP8.
+  - `GLM5.1/`: Optimized configurations and results for GLM-5.1.
+    - `fp8/`: 2-node FP8 serving optimization.
+    - `nvfp4/`: 1-node native FP4 serving with NEXTN speculative decoding.
   - `KimiK2.5/`: Configurations for Kimi-K2.5.
 - `gkecluster/`: Infrastructure-as-Code for GKE provisioning.
   - `createCluster_template.sh`: Automated script to provision VPC, networking, and GKE clusters optimized for Blackwell G4.
@@ -37,9 +40,9 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 - `gcp_g4_specs.md`: Detailed hardware and infrastructure specifications.
 
 ## Key Updates (April 2026)
-- **Native FP4 Support**: Successfully validated DeepSeek-V3.2 on a single node using NVFP4 quantization, achieving performance comparable to 2-node FP8 setups.
-- **Speculative Decoding**: Integrated EAGLE speculative decoding for DeepSeek-V3.2 NVFP4, significantly reducing TPOT.
-- **GLM-5.1 Optimization**: Completed FP8 serving optimization for GLM-5.1 on 2-node Blackwell clusters.
+- **Native FP4 Support**: Successfully validated DeepSeek-V3.2 and GLM-5.1 on single-node setups using NVFP4 quantization, achieving high efficiency on Blackwell architecture.
+- **Speculative Decoding**: Integrated EAGLE for DeepSeek-V3.2 and NEXTN for GLM-5.1 NVFP4 to optimize token generation speeds.
+- **GLM-5.1 Optimization**: Completed both FP8 (2-node) and NVFP4 (1-node) serving optimizations.
 - **Distributed SGLang**: Standardized 2-node configurations for ultra-large models using `pipeline-parallel-size 2` and `tensor-parallel-size 8`.
 
 ## GKE Infrastructure Setup
@@ -57,6 +60,7 @@ Detailed performance logs, including TTFT/TPOT latency distributions and through
 - [DeepSeek-V3.2 (FP8): models/DeepSeekv3-2/fp8/results/benchmark_results.md](./models/DeepSeekv3-2/fp8/results/benchmark_results.md)
 - [DeepSeek-V3.2 (NVFP4): models/DeepSeekv3-2/nvp4/results/benchmark_results.md](./models/DeepSeekv3-2/nvp4/results/benchmark_results.md)
 - [GLM-5.1 (FP8): models/GLM5.1/results/benchmark-results.md](./models/GLM5.1/results/benchmark-results.md)
+- [GLM-5.1 (NVFP4): models/GLM5.1/nvfp4/results/benchmark_results.md](./models/GLM5.1/nvfp4/results/benchmark_results.md)
 - [Kimi-K2.5 (FP8): models/KimiK2.5/results/benchmark_results.md](./models/KimiK2.5/results/benchmark_results.md)
 
 ## Usage
