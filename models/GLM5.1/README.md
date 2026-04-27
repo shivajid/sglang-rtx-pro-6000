@@ -30,8 +30,8 @@ GLM-5.1 is an advanced language model optimized for high-throughput inference. T
 
 ## Benchmark Results
 
-| Metric | FP8 Result | NVFP4 Result |
-|--------|------------|--------------|
+| Metric | FP8 Result (2-node) | NVFP4 Result (1-node) |
+|--------|---------------------|-----------------------|
 | Output Throughput | 2785.55 tok/s | 1407.71 tok/s |
 | Total Throughput | 3125.35 tok/s | 1585.08 tok/s |
 | Peak Output Throughput | 4092.00 tok/s | 770.00 tok/s |
