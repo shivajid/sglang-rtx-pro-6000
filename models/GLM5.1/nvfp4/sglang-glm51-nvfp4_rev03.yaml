@@ -42,29 +42,23 @@ spec:
         - --kv-cache-dtype
         - bf16
         - --fp4-gemm-backend
-        - flashinfer_cutlass
+        - flashinfer_cudnn
         - --attention-backend
         - flashinfer
         - --moe-runner-backend
         - flashinfer_cutlass
+        - --disable-shared-experts-fusion
         - --mem-fraction-static
         - "0.88"
         - --max-running-requests
-        - "768"
+        - "512"
         - --chunked-prefill-size
-        - "8192"
+        - "16384"
         - --enable-mixed-chunk
         - --cuda-graph-max-bs
         - "64"
-        - --page-size
-        - "64"
-        - --disable-shared-experts-fusion
         - --disable-custom-all-reduce
         - --enable-flashinfer-allreduce-fusion
-        - --enable-fused-moe-sum-all-reduce
-        - --enable-dp-lm-head
-        - --tokenizer-worker-num
-        - "16"
         - --speculative-algorithm
         - NEXTN
         - --speculative-num-steps
@@ -73,8 +67,6 @@ spec:
         - "1"
         - --speculative-num-draft-tokens
         - "4"
-        - --schedule-conservativeness
-        - "1.3"
         - --host
         - 0.0.0.0
         - --port
@@ -88,7 +80,7 @@ spec:
               name: hf-secret
               key: HF_TOKEN
         - name: OMP_NUM_THREADS
-          value: "24"
+          value: "16"
         - name: SGLANG_ENABLE_SPEC_V2
           value: "True"
         - name: NCCL_DEBUG
@@ -117,6 +109,10 @@ spec:
           value: "1"
         - name: SGLANG_ENABLE_JIT_DEEPGEMM
           value: "0"
+        - name: SGLANG_ENABLE_SPEC_V2_CUDA_GRAPH_COMPILE
+          value: "true"
+        - name: TRANSFORMERS_VERBOSITY
+          value: "INFO"
         resources:
           limits:
             nvidia.com/gpu: "8"
