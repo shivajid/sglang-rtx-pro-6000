@@ -1,0 +1,14 @@
+python -m sglang.bench_serving \
+  --backend sglang-oai-chat \
+  --base-url http://127.0.0.1:30000 \
+  --model datalab-to/chandra-ocr-2 \
+  --dataset-name image \
+  --image-count 1 \
+  --image-resolution 1080p \
+  --image-format png \
+  --random-input-len 64 \
+  --random-output-len 4096 \
+  --num-prompts 200 \
+  --max-concurrency 96 \
+  --apply-chat-template \
+  --output-file chandra_sglang_bench.jsonl
