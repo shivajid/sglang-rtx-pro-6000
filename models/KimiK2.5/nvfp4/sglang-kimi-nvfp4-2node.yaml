@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: distributed-sglang-opt
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: distributed-sglang-opt
+  serviceName: ""
+  template:
+    metadata:
+      labels:
+        app: distributed-sglang-opt
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: g4-384-np-0
+      containers:
+      - name: sglang-container
+        image: lmsysorg/sglang:dev-cu13
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          python3 -m sglang.launch_server \
+              --model nvidia/Kimi-K2.5-NVFP4 \
+              --tensor-parallel-size 8 \
+              --pipeline-parallel-size 2 \
+              --dp-size 8 \
+              --enable-dp-attention \
+              --nnodes 2 \
+              --node-rank $POD_INDEX \
+              --port 8000 \
+              --dist-init-addr sglang-master-pod-opt:5000 \
+              --trust-remote-code \
+              --quantization modelopt_fp4 \
+              --disable-shared-experts-fusion \
+              --mem-fraction-static 0.82 \
+              --schedule-policy fcfs \
+              --chunked-prefill-size 16384 \
+              --kv-cache-dtype bfloat16 \
+              --reasoning-parser kimi_k2 \
+              --tool-call-parser kimi_k2 \
+              --enable-dp-lm-head \
+              --enable-fused-moe-sum-all-reduce \
+              --disable-radix-cache \
+              --fp4-gemm-backend flashinfer_cutlass \
+              --attention-backend flashinfer \
+              --moe-runner-backend flashinfer_cutlass \
+              --enable-flashinfer-allreduce-fusion \
+              --disable-custom-all-reduce \
+              --host 0.0.0.0 
+
+        env:
+        - name: POD_INDEX
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: NCCL_DEBUG
+          value: INFO
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0,eth1"
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: NCCL_P2P_LEVEL
+          value: "SYS"
+        - name: NCCL_SOCKET_NTHREADS
+          value: "8"
+        - name: NCCL_NSOCKS_PERTHREAD
+          value: "8"
+        - name: NCCL_MIN_NCHANNELS
+          value: "8"
+        - name: NCCL_ALLOC_P2P_NET_LL_BUFFERS
+          value: "1"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: SGLANG_ENABLE_DEEP_GEMM
+          value: "0"
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /root/.cache/huggingface
+          name: hf-cache
+        securityContext:
+          privileged: true  
+      dnsPolicy: ClusterFirstWithHostNet
+      volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+        name: dshm
+      - name: hf-cache
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-master-pod-opt
+spec:
+  clusterIP: None
+  selector:
+    app: distributed-sglang-opt
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: dist-port
+    port: 5000
+    targetPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-serving-on-master-opt
+spec:
+  type: NodePort
+  selector:
+    app: distributed-sglang-opt
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: serving
+    port: 8000
+    targetPort: 8000
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+
