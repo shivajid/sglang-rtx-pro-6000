@@ -19,6 +19,8 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 | [Kimi-K2.5](https://huggingface.co/moonshotai/Kimi-K2.5) | INT4* | 2 Nodes (16x RTX 6000) | 3069.15 | 3443.55 | 6889.00 | 147.45 |
 | [Kimi-K2.5](https://huggingface.co/nvidia/Kimi-K2.5-NVFP4) | NVFP4 | 2 Nodes (16x RTX 6000) | 3237.46 | 3632.39 | 5535.00 | 137.89 |
 | [datalab-to/chandra-ocr-2](https://huggingface.co/datalab-to/chandra-ocr-2)** | BF16| 1 Node (1x RTX 6000)| 2600.67 | 5267.08 | 4603.00| 32.47 |
+
+*Table last updated: May 5, 2026*
  
 *Benchmarks conducted using `inf` request rate and 512 max concurrency. Tests utilized a random dataset with 1024 input tokens and 8192 output tokens (1536 total prompts). The load generator was isolated on a dedicated CPU-only node pool to ensure zero interference with GPU performance.*
 
@@ -43,7 +45,8 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
   - `benchmark-glm51.yaml`: Load generator config for GLM-5.1.
 - `gcp_g4_specs.md`: Detailed hardware and infrastructure specifications.
 
-## Key Updates (April 2026)
+## Key Updates (May 2026)
+- **Kimi-K2.5 NVFP4 Validation**: Successfully optimized and benchmarked Kimi-K2.5 using native NVFP4 quantization on a 2-node (16x GPU) setup, achieving significant throughput improvements.
 - **Native FP4 Support**: Successfully validated DeepSeek-V3.2 and GLM-5.1 on single-node setups using NVFP4 quantization, achieving high efficiency on Blackwell architecture.
 - **Speculative Decoding**: Integrated EAGLE for DeepSeek-V3.2 and NEXTN for GLM-5.1 NVFP4 to optimize token generation speeds.
 - **GLM-5.1 Optimization**: Completed both FP8 (2-node) and NVFP4 (1-node) serving optimizations.
