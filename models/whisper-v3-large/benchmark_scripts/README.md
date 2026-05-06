@@ -99,22 +99,9 @@ docker run --rm \
 
 ## Server setup
 
-The benchmark is engine-agnostic. Either of the following works as the target:
-
-### vLLM
-
-```bash
-vllm serve openai/whisper-large-v3 \
-  --task transcription \
-  --served-model-name whisper-large-v3 \
-  --max-model-len 448 \
-  --max-num-seqs 400 \
-  --gpu-memory-utilization 0.95 \
-  --port 8000
-```
-
-For maximum throughput on Hopper/Ada GPUs, swap the model for the FP8 variant:
-`RedHatAI/whisper-large-v3-FP8-dynamic`.
+The benchmark client is engine-agnostic — anything exposing an
+OpenAI-compatible `/v1/audio/transcriptions` endpoint works. Below is the
+SGLang setup we use.
 
 ### SGLang (single GPU)
 
@@ -180,6 +167,101 @@ Notes:
   On Ampere, omit it to fall back to the default backend.
 - `--served-model-name` must match the `SERVED_NAME` env var passed to
   the benchmark container, otherwise the server returns 404.
+
+## How the sweep works
+
+A single benchmark run executes one **phase per request rate**. Each phase is
+an independent measurement: the harness sends `NUM_PROMPTS` audio
+transcription requests at the target rate, waits for them all to complete,
+records latency and throughput, and writes a JSON file. Then it moves to the
+next rate. Phases don't share state — a slow rate doesn't pollute the next
+one's measurements.
+
+### Arrival pattern
+
+Requests arrive as an **open-loop Poisson process** at the requested rate
+(in requests per second). At rate=32, the harness submits a new request every
+~31ms on average, regardless of whether the previous one has completed. This
+matches how production traffic actually behaves — clients don't wait for the
+server.
+
+The special value `inf` means "fire all `NUM_PROMPTS` at once with no
+spacing." This is a stress test, not realistic load — it produces useful
+peak-throughput numbers but TTFT will be dominated by queue time.
+
+### Why a sweep instead of one number
+
+A single throughput number doesn't tell you how the server behaves under
+real load. The sweep traces a **throughput-vs-latency curve**:
+
+- **Low rates** (well below capacity) → latency is pure model time, throughput
+  equals offered rate. The server is idle between requests.
+- **Mid rates** (approaching capacity) → latency starts to climb as requests
+  begin queueing. Throughput still tracks offered rate.
+- **At capacity** → throughput plateaus, latency knees up sharply. This is
+  the **saturation point**.
+- **Above capacity** → throughput stays flat (server can't go faster),
+  latency grows unbounded as the queue backs up. Eventually requests time
+  out.
+
+The shape of this curve is what you actually want to know. Two servers might
+both peak at 100 req/s, but the one that holds <500ms p99 up to 80 req/s is
+much more useful in production than the one that's already at 2s p99 by 50
+req/s.
+
+### What each phase measures
+
+For every rate in `RATES`, the harness records:
+
+| Metric | Meaning |
+|--------|---------|
+| `completed` / `failed` | How many requests succeeded vs errored |
+| `duration` | Wall time for the phase, in seconds |
+| `request_throughput` | Achieved requests/sec (may differ from offered rate at saturation) |
+| `output_throughput` | Generated tokens/sec, summed across all requests |
+| `total_token_throughput` | Input + output tokens/sec (input includes audio frames) |
+| `rtfx` | Audio seconds processed per wall-clock second — **the headline number for ASR** |
+| `mean_ttft_ms` / `median_ttft_ms` / `p99_ttft_ms` | Time to first transcript token. Captures queue + encoder time. |
+| `mean_tpot_ms` / `median_tpot_ms` / `p99_tpot_ms` | Time per output token, *after* first token |
+| `mean_itl_ms` / `p99_itl_ms` | Inter-token latency (similar to TPOT, slightly different aggregation) |
+
+For Whisper specifically, **TTFT dominates user-perceived latency** because
+outputs are short (50–100 tokens) and TPOT is sub-millisecond. A request that
+finishes in 800ms typically spent 750ms in queue+encoder and 50ms in
+decoding.
+
+### Choosing the right rate set
+
+The default `8 16 32 64 128 256 inf` is geometric, doubling each step. This
+is good for "I don't know the server's capacity yet" — it covers two orders
+of magnitude and makes the saturation point visible regardless of where it
+falls.
+
+Once you know roughly where saturation is, narrow the sweep around that
+range for higher resolution:
+
+```bash
+# Saturation looks like it's around 60-100 req/s
+-e RATES="40 60 80 100 120 inf"
+```
+
+Or skip the sweep entirely for a single-point measurement:
+
+```bash
+# Just measure peak throughput
+-e RATES="inf" -e NUM_PROMPTS=500
+```
+
+### Per-phase duration
+
+Each phase takes `max(num_prompts / rate, num_prompts / server_capacity)`
+seconds. At rate=8 with 1000 prompts, that's at least 125 seconds regardless
+of how fast the server is — the arrival schedule itself takes that long. At
+rate=inf, the phase runs as fast as the server can drain the queue.
+
+This means **low-rate phases are usually the longest** in a sweep, even
+though they exercise the server least. If you're iterating on server config
+and don't need the full curve, skip the bottom rates.
 
 ## Reading the results
 
@@ -247,20 +329,6 @@ plt.savefig('throughput_curve.png', dpi=120)
 "
 ```
 
-## How long does a run take?
-
-For 1000 prompts × 7 rates against a single GPU:
-
-| GPU | Approx total |
-|-----|--------------|
-| H100 + FP8 | 8–10 min |
-| L40S + FP8 | 12–15 min |
-| A100 + bf16 | 10–12 min |
-| L4 + bf16 | 20–25 min |
-
-Add 5–15 min the first time for the AMI dataset download. With the HF cache
-volume mounted, subsequent runs reuse the cached audio.
-
 ## Troubleshooting
 
 **`404 model not found`** — `SERVED_NAME` doesn't match the server's
@@ -292,8 +360,4 @@ This image only measures throughput and latency. For Word Error Rate
 `jiwer` and OpenAI's English text normalizer — see the
 [Open ASR Leaderboard](https://huggingface.co/spaces/hf-audio/open_asr_leaderboard)
 methodology.
-
-## License
-
-MIT.
 
