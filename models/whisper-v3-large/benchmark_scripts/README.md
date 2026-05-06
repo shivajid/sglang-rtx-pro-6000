@@ -1,5 +1,7 @@
 # Whisper-large-v3 Benchmark
 
+**Note**. This ia an alternative benchmark tool, based on vLLM going against the sglang server.
+
 Throughput and latency benchmark for `openai/whisper-large-v3` running behind any
 OpenAI-compatible `/v1/audio/transcriptions` endpoint — vLLM, SGLang, TGI, or
 anything else that speaks the protocol.
