@@ -20,6 +20,9 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 | [Kimi-K2.5](https://huggingface.co/nvidia/Kimi-K2.5-NVFP4) | NVFP4 | 2 Nodes (16x RTX 6000) | 3237.46 | 3632.39 | 5535.00 | 137.89 |
 | [datalab-to/chandra-ocr-2](https://huggingface.co/datalab-to/chandra-ocr-2)** | BF16| 1 Node (1x RTX 6000)| 2600.67 | 5267.08 | 4603.00| 32.47 |
 
+
+**[openai/whisper-large-v3](https://huggingface.co/openai/whisper-large-v3)** - The benchmark for this model can be found in this [page](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/whisper-v3-large). Since this is ASR model, we did not apply the standard ISL/OSL of 1K/8K and concurrancy of 512.
+
 *Table last updated: May 5, 2026*
  
 *Benchmarks conducted using `inf` request rate and 512 max concurrency. Tests utilized a random dataset with 1024 input tokens and 8192 output tokens (1536 total prompts). The load generator was isolated on a dedicated CPU-only node pool to ensure zero interference with GPU performance.*
