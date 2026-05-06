@@ -1,0 +1,101 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sglang-whisper-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: sglang-whisper-job
+    spec:
+      hostNetwork: true
+      hostIPC: true
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      nodeSelector:
+        cloud.google.com/gke-nodepool: robv-8x-rtx6000-pool
+      containers:
+      - name: sglang-container
+        image: docker.io/lmsysorg/sglang:latest
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          echo "Starting server with Data Parallelism..."
+          sglang serve --model-path openai/whisper-large-v3 \
+              --tp-size 1 \
+              --dp-size 8 \
+              --trust-remote-code \
+              --mem-fraction-static 0.90 \
+              --max-running-requests 1024 \
+              --chunked-prefill-size 16384 \
+              --cuda-graph-max-bs 128 \
+              --attention-backend flashinfer \
+              --host 0.0.0.0 \
+              --port 30000 > /tmp/server.log 2>&1 &
+              
+          until curl -s http://localhost:30000/model_info; do
+            echo "Waiting for server..."
+            sleep 10
+          done
+          
+          echo "Server is ready, starting benchmarks..."
+          cd /sgl-workspace/sglang/benchmark/asr
+          pip install librosa evaluate jiwer
+          
+          echo "=== Run 1: Chat Completion ===" > /tmp/benchmark.log
+          python3 bench_sglang.py --base-url http://localhost:30000 --model openai/whisper-large-v3 --api-type chat --concurrency 256 --n-examples=512 >> /tmp/benchmark.log 2>&1
+          
+          echo -e "\n=== Run 2: Transcription ===" >> /tmp/benchmark.log
+          python3 bench_sglang.py --base-url http://localhost:30000 --model openai/whisper-large-v3 --api-type transcription --concurrency 256 --n-examples=512 >> /tmp/benchmark.log 2>&1
+          
+          echo -e "\n=== Run 3: Stream ===" >> /tmp/benchmark.log
+          python3 bench_sglang.py --base-url http://localhost:30000 --model openai/whisper-large-v3 --api-type transcription --stream --concurrency 256 --n-examples=512 >> /tmp/benchmark.log 2>&1
+          
+          echo "All benchmarks complete!"
+          
+          echo "================ SERVER LOGS ================"
+          cat /tmp/server.log
+          echo "==============================================="
+          
+          echo "================ BENCHMARK LOGS ================"
+          cat /tmp/benchmark.log
+          echo "==============================================="
+          
+          echo "Sleeping..."
+          sleep infinity
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        - name: HF_HOME
+          value: /root/.cache/huggingface
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /root/.cache/huggingface
+          name: hf-cache
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+      - name: hf-cache
+        emptyDir: {}
+      restartPolicy: Never
