@@ -153,7 +153,7 @@ kind: Service
 metadata:
   name: sglang-serving-nvfp4-k26
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: distributed-sglang-nvfp4-k26
     apps.kubernetes.io/pod-index: "0"
