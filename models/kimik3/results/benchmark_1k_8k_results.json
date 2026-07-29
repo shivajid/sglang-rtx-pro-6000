@@ -1,0 +1,32 @@
+{
+  "target_endpoint": "http://localhost:30100/v1/chat/completions",
+  "model": "moonshotai/Kimi-K3",
+  "concurrency": 8,
+  "total_requests": 16,
+  "successful_requests": 16,
+  "failed_requests": 0,
+  "benchmark_duration_sec": 129.06,
+  "throughput_req_per_sec": 0.12,
+  "throughput_tokens_per_sec": 243.2,
+  "total_tokens_generated": 31387,
+  "total_reasoning_tokens": 20445,
+  "total_content_tokens": 10942,
+  "ttft_ms": {
+    "mean": 803.07,
+    "p50": 852.25,
+    "p90": 944.4,
+    "p95": 944.45,
+    "p99": 944.57
+  },
+  "latency_sec": {
+    "mean": 54.35,
+    "p50": 47.64,
+    "p90": 74.6,
+    "p99": 81.54
+  },
+  "per_request_tps": {
+    "mean": 36.73,
+    "p50": 36.3,
+    "p90": 39.91
+  }
+}
