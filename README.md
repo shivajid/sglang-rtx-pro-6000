@@ -15,6 +15,8 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 | Model | Quantization | Setup | Output Throughput (tok/s) | Total Throughput (tok/s) | Peak Throughput (tok/s) | TPOT (ms) |
 |-------|--------------|-------|---------------------------|--------------------------|-------------------------|-----------|
 | [nvidia/Kimi-K2.6-NVFP4](./models/KimiK2.6/nvfp4/results/benchmark-results.md) | NVFP4 | 2 Nodes (16x RTX 6000) | 3261.28 | 3662.79 | 4725.00 | 138.54 |
+| [moonshotai/Kimi-K3](./models/kimik3/results/benchamrk_sweep_report.md) | BF16 | 4 Nodes (16x GB200) | 1666.54 | 1874.86 | — | 24.88 |
+| [zai-org/GLM-5.2-FP8](./models/GLM5.2/fp8/results/benchmark_results.yaml) | FP8 | 2 Nodes (16x RTX 6000) | 1645.21 | 1855.07 | 2608.00 | 240.43 |
 | [moonshotai/Kimi-K2.6](./models/KimiK2.6/results/benchmark_results.md) (wip)| INT4* | 1 Node (8x RTX 6000) (not optimized) | 1459.26 | 1637.28 | 850.00 | 82.43 |
 | [nvidia/Kimi-K2.5-NVFP4](./models/KimiK2.5/nvfp4/results/benchmarks_2node.yaml) | NVFP4 | 2 Nodes (16x RTX 6000) | 3237.46 | 3632.39 | 5535.00 | 137.89 |
 | [moonshotai/Kimi-K2.5](./models/KimiK2.5/results/benchmark_results.md) | INT4* | 2 Nodes (16x RTX 6000) | 3152.79 | 3537.39 | 4793.00 | 136.52 |
@@ -28,7 +30,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 **[openai/whisper-large-v3](./models/whisper-v3-large/results/benchmark_results.md)** - Since this is ASR model, we did not apply the standard ISL/OSL of 1K/8K and concurrancy of 512.
 
-*Table last updated: June 11, 2026*
+*Table last updated: July 31, 2026*
  
 *Benchmarks conducted using `inf` request rate and 512 max concurrency. Tests utilized a random dataset with 1024 input tokens and 8192 output tokens (1536 total prompts). The load generator was isolated on a dedicated CPU-only node pool to ensure zero interference with GPU performance.*
 
@@ -81,6 +83,34 @@ Focuses on latency characteristics of an ultra-large MoE model, comparing perfor
 | **Median TPOT (ms)** | 101.18 | **90.41** |
 | **Mean TPOT (ms)** | 100.59 | **90.45** |
 
+## [moonshotai/Kimi-K3](./models/kimik3/results/benchamrk_sweep_report.md) Performance Sweep
+[Detailed Configuration & Results](./models/kimik3/)
+
+Comprehensive evaluation of the **Kimi-K3** reasoning model across various workload patterns on GB200 infrastructure. This model leverages SGLang's multi-node optimizations and Blackwell-specific kernels.
+
+### Benchmark Settings
+- **Setup:** 4 Nodes (16x GB200 GPUs).
+- **Architecture:** ARM64 with NCCL MNNVL and GIB plugin.
+- **Workload Patterns:**
+  - **Pattern A (1k/8k):** Reasoning-heavy, long output.
+  - **Pattern B (8k/1k):** Context-heavy, prompt prefill.
+  - **Pattern C (1k/1k):** Balanced conversational.
+
+| Workload Pattern | Peak Total Throughput | Optimal Concurrency | Stream Speed (t/s) |
+| :--- | :---: | :---: | :---: |
+| **1k / 8k (Reasoning)** | 1,874.86 tok/s | 128 | 24.88 |
+| **8k / 1k (Prompt)** | 2,731.09 tok/s | 128 | 24.26 |
+| **1k / 1k (Balanced)** | **2,883.45 tok/s** | 256 | 23.68 |
+
+## [nvidia/GLM-5.2-NVFP4](./models/GLM5.2/GB300_GLM52_single_host_setup.md) GB300 Validation
+[GKE Configuration & Setup Guide](./models/GLM5.2/GB300_GLM52_single_host_setup.md)
+
+Validated GLM-5.2 on **GCP A4X Max (GB300)** infrastructure. While formal throughput benchmarks were only conducted on G4, the GB300 setup was used for qualitative validation of the Blackwell-optimized SGLang stack.
+
+- **Hardware:** GCP A4X Max (4x GPUs per node).
+- **Quantization:** `modelopt_fp4`.
+- **Note:** A production-ready GKE configuration for GB300 is available in the repository at [models/GLM5.2/GB300_GLM52_single_host_setup.md](./models/GLM5.2/GB300_GLM52_single_host_setup.md).
+
 ## [nvidia/Kimi-K2.6-NVFP4](./models/KimiK2.6/nvfp4/results/batch_one_bench_results.md) Batch Throughput Benchmark
 [Detailed Configuration & Results](./models/KimiK2.6/nvfp4/)
 
@@ -106,6 +136,8 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
 - `models/`: Model-specific SGLang job configurations and benchmarks.
   - `DeepSeekv3-2/`: Configs for DeepSeek-V3 and V2.5.
   - `GLM5.1/`: Optimized configurations and results for GLM-5.1.
+  - `GLM5.2/`: Benchmarks and Blackwell (GB300) setup guides for GLM-5.2.
+  - `kimik3/`: Performance sweep and multi-node GB200 configs for Kimi-K3.
   - `KimiK2.5/`: Configurations for Kimi-K2.5.
   - `KimiK2.6/`: Agentic benchmark results and HiCache configurations.
   - `Qwen3.5-397B-A17B-FP8/`: Latency benchmarks for ultra-large MoE model.
@@ -114,7 +146,9 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
   - `agentic_benchmark/`: Scripts for simulating agentic workloads.
 - `gcp_g4_specs.md`: Detailed hardware and infrastructure specifications.
 
-## Key Updates (June 2026)
+## Key Updates (July 2026)
+- **Kimi-K3 Performance Sweep**: Completed a full concurrency sweep for Kimi-K3 on a 4-node (16x GB200) Blackwell setup, achieving nearly 3000 tok/s on balanced workloads.
+- **GLM-5.2 Validation**: Successfully benchmarked GLM-5.2 on a 2-node G4 setup and validated the stack on GB300 (A4X Max) infrastructure.
 - **Native FP4 Support for Kimi K2.6**: Successfully optimized and benchmarked Kimi-K2.6 using native NVFP4 quantization on a 2-node (16x GPU) setup, achieving over 3000 tok/s output throughput.
 - **Qwen3.5-397B Validation**: Successfully benchmarked the 397B MoE model on a single node using FP8 and HiCache, showing massive TTFT improvements.
 - **Agentic Benchmarking**: Introduced agentic trace simulation for Kimi K2.6, achieving over 80% cache hit rate with HiCache.
@@ -133,6 +167,8 @@ The `gkecluster` directory contains a comprehensive template for provisioning a 
 
 Detailed performance logs, including TTFT/TPOT latency distributions and throughput metrics, are located within each model's `results` directory:
 
+- [moonshotai/Kimi-K3: models/kimik3/results/benchamrk_sweep_report.md](./models/kimik3/results/benchamrk_sweep_report.md)
+- [zai-org/GLM-5.2-FP8: models/GLM5.2/fp8/results/benchmark_results.yaml](./models/GLM5.2/fp8/results/benchmark_results.yaml)
 - [Qwen/Qwen3.5-397B-A17B-FP8: models/Qwen3.5-397B-A17B-FP8/BENCHMARK_REPORT.md](./models/Qwen3.5-397B-A17B-FP8/BENCHMARK_REPORT.md)
 - [moonshotai/Kimi-K2.6 Agentic: models/KimiK2.6/agent_benchmark/README.md](./models/KimiK2.6/agent_benchmark/README.md)
 - [deepseek-ai/DeepSeek-V3.2 (FP8): models/DeepSeekv3-2/fp8/results/benchmark_results.md](./models/DeepSeekv3-2/fp8/results/benchmark_results.md)
