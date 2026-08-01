@@ -60,6 +60,7 @@ Above hangs and crashes. See the change from `--hicache-io-backend direct` from 
 Some config calculators:
 mamba-full-memory-ratio values
 
+```
 Avg request length (ISL+OSL)	--mamba-full-memory-ratio
 11,264	7.21
 32,768	2.48
@@ -68,5 +69,5 @@ Avg request length (ISL+OSL)	--mamba-full-memory-ratio
 262,144	0.31
 524,288	0.16
 1,048,576	0.078
-
+```
 
