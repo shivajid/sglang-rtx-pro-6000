@@ -8,7 +8,7 @@ The model was released on July 27th, 2026
 
 Challenges
 
-KimiK3 has really long reasoning, ensure to 
+KimiK3 has really long reasoning, ensure to `"reasoning_effort": "low",` to the client request. To manage the context for long agentic calls. I had to make this change for SWE-Benchmark.
 
 
 On 8 Node add the following timeouts, to avoid NCCL Errors
