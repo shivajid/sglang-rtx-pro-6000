@@ -21,6 +21,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 | Model | Quantization | Setup | Output Throughput (tok/s) | Total Throughput (tok/s) | Peak Throughput (tok/s) | TPOT (ms) |
 |-------|--------------|-------|---------------------------|--------------------------|-------------------------|-----------|
 | [nvidia/Kimi-K2.6-NVFP4](./models/KimiK2.6/nvfp4/results/benchmark-results.md) | NVFP4 | 2 Nodes (16x RTX 6000) | 3261.28 | 3662.79 | 4725.00 | 138.54 |
+| [deepseek-ai/DeepSeek-V4-Flash-0731](./models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md)*** | MXFP4 | 2 Nodes (16x RTX 6000) | 1606.27 | — | 4710.94 | 107.64 |
 | [moonshotai/Kimi-K3](./models/kimik3/results/benchamrk_sweep_report.md) | BF16 | 4 Nodes (16x GB200) | 1666.54 | 1874.86 | — | 24.88 |
 | [zai-org/GLM-5.2-FP8](./models/GLM5.2/fp8/results/benchmark_results.yaml) | FP8 | 2 Nodes (16x RTX 6000) | 1645.21 | 1855.07 | 2608.00 | 240.43 |
 | [moonshotai/Kimi-K2.6](./models/KimiK2.6/results/benchmark_results.md) (wip)| INT4* | 1 Node (8x RTX 6000) (not optimized) | 1459.26 | 1637.28 | 850.00 | 82.43 |
@@ -36,13 +37,15 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 **[openai/whisper-large-v3](./models/whisper-v3-large/results/benchmark_results.md)** - Since this is ASR model, we did not apply the standard ISL/OSL of 1K/8K and concurrancy of 512.
 
-*Table last updated: July 31, 2026*
+*Table last updated: August 5, 2026*
  
 *Benchmarks conducted using `inf` request rate and 512 max concurrency. Tests utilized a random dataset with 1024 input tokens and 8192 output tokens (1536 total prompts). The load generator was isolated on a dedicated CPU-only node pool to ensure zero interference with GPU performance.*
 
 *\*Kimi-K2.5 and Kimi-K2.6 use native INT4 quantization and KV cache optimization to improve memory efficiency and inference speed.*
 
 **\** datalab-to/chandra-ocr-2 is an VLM model. We have run an image benchmark different for the rest of the models **
+
+*\*\*\* DeepSeek-V4-Flash-0731 numbers come from its concurrency sweep (512 prompts, `1k/8k` @ 512 concurrency) rather than the 1536-prompt standard run. Its Peak column is the balanced `1k/1k` @ 512 result (4,710.94 output tok/s) — see the [sweep report](./models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md).*
 
 ## [moonshotai/Kimi-K2.6](./models/KimiK2.6/agent_benchmark/README.md) Agentic Benchmark
 [Detailed Configuration & Results](./models/KimiK2.6/agent_benchmark/)
@@ -108,6 +111,24 @@ Comprehensive evaluation of the **Kimi-K3** reasoning model across various workl
 | **8k / 1k (Prompt)** | 2,731.09 tok/s | 128 | 24.26 |
 | **1k / 1k (Balanced)** | **2,883.45 tok/s** | 256 | 23.68 |
 
+## [deepseek-ai/DeepSeek-V4-Flash-0731](./models/DeepSeekV4-Flash-0731/README.md) Performance Sweep
+[Detailed Configuration & Results](./models/DeepSeekV4-Flash-0731/)
+
+Full concurrency sweep (1 → 512) of DeepSeek's **V4-Flash** (Jul 31, 2026 checkpoint) on the standard 2-node G4 setup. Unlike the other trillion-class recipes, throughput **keeps scaling all the way to 512 concurrent streams** with no saturation plateau.
+
+### Benchmark Settings
+- **Setup:** 2 Nodes (16x RTX 6000), TP=8 · PP=2 · DP=8, DP attention.
+- **Optimizations:** FlashInfer MXFP4 MoE runner (`--moe-runner-backend flashinfer_mxfp4`), FP8 KV cache.
+- **Workload Patterns:** `1k/8k` (reasoning), `8k/1k` (prefill), `1k/1k` (balanced) at concurrency 1 → 512.
+
+| Workload Pattern | Peak Output Throughput | @ Concurrency | TPOT @ 512 | TTFT Mean @ 512 |
+| :--- | :---: | :---: | :---: | :---: |
+| **1k / 1k (Balanced)** | **4,710.94 tok/s** | 512 | 106.50 ms | 1.23 s |
+| **8k / 1k (Prompt)** | 4,209.22 tok/s | 512 | 113.38 ms | 7.19 s |
+| **1k / 8k (Reasoning)** | 1,606.27 tok/s | 512 | 107.64 ms | 1.55 s |
+
+TPOT moves only **75.3 → 106–113 ms/tok** from 1 → 512 streams; 100% success rate at every level. Charts: [results/charts/](./models/DeepSeekV4-Flash-0731/results/charts/). The unoptimized 1.6T [DeepSeek-V4-Pro config](./models/DeepSeekv4/) runs on the same topology.
+
 ## [nvidia/GLM-5.2-NVFP4](./models/GLM5.2/GB300_GLM52_single_host_setup.md) GB300 Validation
 [GKE Configuration & Setup Guide](./models/GLM5.2/GB300_GLM52_single_host_setup.md)
 
@@ -141,6 +162,8 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
 
 - `models/`: Model-specific SGLang job configurations and benchmarks.
   - `DeepSeekv3-2/`: Configs for DeepSeek-V3 and V2.5.
+  - `DeepSeekV4-Flash-0731/`: 2-node config and concurrency sweep for DeepSeek-V4-Flash.
+  - `DeepSeekv4/`: DeepSeek-V4-Pro (1.6T) 2-node config — not yet optimized.
   - `GLM5.1/`: Optimized configurations and results for GLM-5.1.
   - `GLM5.2/`: Benchmarks and Blackwell (GB300) setup guides for GLM-5.2.
   - `kimik3/`: Performance sweep and multi-node GB200 configs for Kimi-K3.
@@ -152,7 +175,9 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
   - `agentic_benchmark/`: Scripts for simulating agentic workloads.
 - `gcp_g4_specs.md`: Detailed hardware and infrastructure specifications.
 
-## Key Updates (July 2026)
+## Key Updates (July–August 2026)
+- **DeepSeek-V4-Flash Sweep**: Benchmarked the Jul 31 checkpoint on 2 nodes with the FlashInfer MXFP4 MoE runner — 4,711 output tok/s at 512 concurrency with no saturation plateau; added an initial (unoptimized) config for the 1.6T DeepSeek-V4-Pro.
+- **Kimi-K3 ViBench**: 24-app agentic coding benchmark on the 8-node deployment — 95.6/100 average with the regular reasoning trace (81.5 with `reasoning_effort: low`).
 - **Kimi-K3 Performance Sweep**: Completed a full concurrency sweep for Kimi-K3 on a 4-node (16x GB200) Blackwell setup, achieving nearly 3000 tok/s on balanced workloads.
 - **GLM-5.2 Validation**: Successfully benchmarked GLM-5.2 on a 2-node G4 setup and validated the stack on GB300 (A4X Max) infrastructure.
 - **Native FP4 Support for Kimi K2.6**: Successfully optimized and benchmarked Kimi-K2.6 using native NVFP4 quantization on a 2-node (16x GPU) setup, achieving over 3000 tok/s output throughput.
@@ -173,6 +198,7 @@ The `gkecluster` directory contains a comprehensive template for provisioning a 
 
 Detailed performance logs, including TTFT/TPOT latency distributions and throughput metrics, are located within each model's `results` directory:
 
+- [deepseek-ai/DeepSeek-V4-Flash-0731: models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md](./models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md)
 - [moonshotai/Kimi-K3: models/kimik3/results/benchamrk_sweep_report.md](./models/kimik3/results/benchamrk_sweep_report.md)
 - [zai-org/GLM-5.2-FP8: models/GLM5.2/fp8/results/benchmark_results.yaml](./models/GLM5.2/fp8/results/benchmark_results.yaml)
 - [Qwen/Qwen3.5-397B-A17B-FP8: models/Qwen3.5-397B-A17B-FP8/BENCHMARK_REPORT.md](./models/Qwen3.5-397B-A17B-FP8/BENCHMARK_REPORT.md)

@@ -1,4 +1,4 @@
-# SOTA Open-Model Serving on Google Cloud G4 (NVIDIA RTX PRO 6000)
+# SOTA Open-Model Serving on Google Cloud — G4 (RTX PRO 6000), GB200 and GB300
 
 > Production-validated SGLang and vLLM recipes and measured benchmarks for serving trillion-parameter-class open models on Google Cloud G4 instances (8× NVIDIA RTX PRO 6000 Blackwell SM120, 96 GB GDDR7, PCIe Gen 5, no NVLink, no GPU RDMA). Covers NVFP4/FP8/INT4 quantization, multi-node TP8·PP2 parallelism over plain TCP, HiCache KV-cache offload, real agentic trace-replay benchmarks, dual-NIC NCCL networking, and prefix-cache-aware routing with the GKE Inference Gateway (llm-d).
 
@@ -37,6 +37,8 @@ Key measured results (standard profile 1024 in / 8192 out, 512 concurrency, unle
 - [llm-d project](https://llm-d.ai): the upstream framework for cache-aware LLM routing on Kubernetes
 
 ## Optional
+
+- [Model chooser](https://shivajid.github.io/sglang-rtx-pro-6000/#chooser): qualitative guide to which model fits which use case (interactive scale, agentic workloads, long context, RAG latency, single-node budgets, ASR, OCR)
 
 - [Agentic benchmark details](https://shivajid.github.io/sglang-rtx-pro-6000/#agentic): trace-replay methodology, HiCache + longest-prefix-match scheduling, single-node vs two-node latency findings
 - [Networking (DRANET dual-NIC)](https://shivajid.github.io/sglang-rtx-pro-6000/#network): iperf3 and NCCL results over jumbo-frame VPC
