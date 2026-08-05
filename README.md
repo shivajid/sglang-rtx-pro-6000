@@ -1,4 +1,10 @@
-# OSS Model Benchmarks on GCP G4
+# OSS Model Benchmarks on Google Cloud on Blackwell chips
+
+This page has optimized recipes mostly for GCP G4 (RTX Pro 6000) machines.
+
+But with launch of GLM5.2 and KimiK3, I was forced to use bigger GPUs of GB300 and GB200. For these models you will find recipes for them.
+
+Overall they have been updated.
 
 📖 **[Link to Documentation](https://shivajid.github.io/sglang-rtx-pro-6000/)** 
 
