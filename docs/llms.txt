@@ -5,6 +5,8 @@
 Key measured results (standard profile 1024 in / 8192 out, 512 concurrency, unless noted):
 - Kimi-K2.6 NVFP4, 2 nodes: 3,261.28 output tok/s — repo best (bench_one_batch peak: 14,015.66 tok/s prefill)
 - Kimi-K2.5 NVFP4, 2 nodes: 3,237.46 output tok/s
+- Kimi-K3 on 4-node GB200 (not G4): 2,883 total tok/s peak at concurrency 256 (1k/1k); ViBench agentic coding 95.6/100 over 24 apps on 8 nodes
+- GLM-5.2 FP8, 2 nodes (early config): 1,645.21 output tok/s; NVFP4 validated on GB300 (A4X Max)
 - DeepSeek-V3.2 NVFP4, 1 node: 334.4 output tok/s per GPU with EAGLE speculation
 - Agentic trace replay (12,542 real requests, up to 250 steps, ~73K-token prompts): 81.2% prefix-cache hit rate on a single node
 - HiCache on Qwen3.5-397B with 20K-token prompts: P99 TTFT 14.05 s → 3.36 s
@@ -20,7 +22,9 @@ Key measured results (standard profile 1024 in / 8192 out, 512 concurrency, unle
 - [Kimi-K2.6](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/KimiK2.6): EAGLE3 speculation + HiCache + GCS Fuse weights; NVFP4 2-node config (repo's best throughput) and bench_one_batch results
 - [Kimi-K2.5](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/KimiK2.5): INT4 vs NVFP4 head-to-head on 16 GPUs with DP8 attention
 - [DeepSeek-V3.2](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/DeepSeekV3.2): NSA attention, EAGLE speculation; 1-node NVFP4 vs 2-node FP8 trade-offs
+- [Kimi-K3](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/kimik3): GB200 LeaderWorkerSet configs (TP16·DCP16 / TP32·DCP32), concurrency sweep 1→512 with charts, ViBench agentic coding reports
 - [GLM-5.1](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/GLM5.1): NEXTN speculation; super-linear 1→2 node scaling under saturation
+- [GLM-5.2](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/GLM5.2): FP8 2-node G4 results and GB300 (A4X Max) NVFP4 single-host setup guide
 - [Qwen3.5-397B](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/Qwen3.5): HiCache latency A/B with 20K-token prompts
 - [Whisper-large-v3](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/Whisper): DP8 audio transcription, 55.6 req/s
 - [Chandra-OCR-2](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/ChandraOCR): single-GPU vision OCR, fastest TPOT in the repo (32.5 ms)

@@ -17,7 +17,23 @@ The benchmark evaluates scalability, throughput (tokens/sec and requests/sec), T
 
 ---
 
-## 2. Architecture & Execution Environment
+## 2. Visual Summary
+
+**Total throughput vs concurrency** — throughput scales near-linearly to concurrency 128, then plateaus as the GPUs saturate. The balanced `1k/1k` pattern peaks at **2,883 tok/s @ 256**; both long-prompt and long-output patterns peak at **128**.
+
+![Kimi-K3 total throughput vs concurrency](charts/throughput_vs_concurrency.png)
+
+**Mean TTFT vs concurrency (log scale)** — TTFT stays in the low seconds through concurrency 128, then jumps one to two orders of magnitude at 256+ as requests queue for KV-cache blocks. This is queueing, not decode slowdown.
+
+![Kimi-K3 mean TTFT vs concurrency](charts/ttft_vs_concurrency.png)
+
+**Per-request stream speed vs concurrency** — a single stream decodes at ~48 tok/s; under 128–512 simultaneous streams, per-user speed settles at ~23–25 tok/s, comfortably above human reading speed.
+
+![Kimi-K3 per-request stream speed vs concurrency](charts/stream_speed_vs_concurrency.png)
+
+---
+
+## 3. Architecture & Execution Environment
 
 ### Deployment Topology
 * **Inference Server**: SGLang deployed on GKE using **LeaderWorkerSet (LWS)** (`sglang-kimi-k3-0`, `0-1`, `0-2`, `0-3`).
@@ -54,7 +70,7 @@ The benchmark evaluates scalability, throughput (tokens/sec and requests/sec), T
 
 ---
 
-## 3. Comparative Benchmark Results (Concurrency 1 to 512)
+## 4. Comparative Benchmark Results (Concurrency 1 to 512)
 
 ### Pattern A: 1K Input / 8K Output (`1k/8k` — Reasoning & Generation Heavy)
 > *Long-form reasoning and output generation testing extended decode performance.*
@@ -104,7 +120,7 @@ The benchmark evaluates scalability, throughput (tokens/sec and requests/sec), T
 
 ---
 
-## 4. Key Performance Insights
+## 5. Key Performance Insights
 
 1. **Optimal Operating Envelopes (Sweet Spots)**:
    * **Concurrency 128** is the optimal operating point for latency-sensitive applications across all workload types. At this level, **Time to First Token (TTFT)** remains exceptionally low (**2.5s for 1K prompts** and **5.6s for 8K prompts**), while delivering near-maximum system throughput (**1,875 to 2,872 tok/s**).
@@ -117,7 +133,7 @@ The benchmark evaluates scalability, throughput (tokens/sec and requests/sec), T
 
 ---
 
-## 5. Reproducibility & Scripts
+## 6. Reproducibility & Scripts
 
 To run or re-verify these benchmarks locally against a live GKE deployment:
 
