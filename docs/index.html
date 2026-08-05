@@ -640,9 +640,9 @@ python3 -m sglang.bench_serving \
 <section class="page" id="page-dsv4flash">
   <h1 class="pagetitle">DeepSeek-V4-Flash</h1>
   <p class="lede">DeepSeek's Jul 31, 2026 flash checkpoint on the standard 2-node G4 setup: a full concurrency sweep (1 → 512, three workload patterns) that keeps scaling all the way to 4,711 output tok/s — with TPOT barely moving from its single-stream baseline.</p>
-  <div class="meta"><span class="chip">deepseek-ai/DeepSeek-V4-Flash-0731</span><span class="chip"><a href="https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/DeepSeekV4-Flash" target="_blank" rel="noopener" style="text-decoration:none">files on GitHub ↗</a></span><span class="chip">2n · <b>16× GPU</b></span><span class="chip">TP8 · PP2 · DP8</span><span class="chip">MXFP4 MoE</span><span class="chip">kv fp8_e4m3</span><span class="chip">dev-cu13</span></div>
+  <div class="meta"><span class="chip">deepseek-ai/DeepSeek-V4-Flash-0731</span><span class="chip"><a href="https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/DeepSeekV4-Flash-0731" target="_blank" rel="noopener" style="text-decoration:none">files on GitHub ↗</a></span><span class="chip">2n · <b>16× GPU</b></span><span class="chip">TP8 · PP2 · DP8</span><span class="chip">MXFP4 MoE</span><span class="chip">kv fp8_e4m3</span><span class="chip">dev-cu13</span></div>
 
-  <div class="codeblock"><div class="chead"><span><a href="https://github.com/shivajid/sglang-rtx-pro-6000/blob/main/models/DeepSeekV4-Flash/sglang-dsv4-flash-2node.yaml" target="_blank" rel="noopener" style="color:inherit">models/DeepSeekV4-Flash/sglang-dsv4-flash-2node.yaml</a></span><button class="copybtn">Copy</button></div><pre>python3 -m sglang.launch_server \
+  <div class="codeblock"><div class="chead"><span><a href="https://github.com/shivajid/sglang-rtx-pro-6000/blob/main/models/DeepSeekV4-Flash-0731/sglang-dsv4-flash-2node.yaml" target="_blank" rel="noopener" style="color:inherit">models/DeepSeekV4-Flash-0731/sglang-dsv4-flash-2node.yaml</a></span><button class="copybtn">Copy</button></div><pre>python3 -m sglang.launch_server \
   --model-path deepseek-ai/DeepSeek-V4-Flash-0731 --trust-remote-code \
   --tensor-parallel-size 8 --pipeline-parallel-size 2 --dp-size 8 --enable-dp-attention \
   --nnodes 2 --node-rank $POD_INDEX --dist-init-addr sglang-dsv4-flash-master:5000 \
@@ -654,7 +654,7 @@ python3 -m sglang.bench_serving \
   --enable-metrics --host 0.0.0.0 --port 30000</pre></div>
 
   <h3 id="dsv4-results">Concurrency sweep — 2 nodes</h3>
-  <p>Three patterns (1k/8k, 8k/1k, 1k/1k) at concurrency 1 → 512, streaming client on the isolated benchmark pool, 100% success at every level. Full tables and PNG charts in the <a href="https://github.com/shivajid/sglang-rtx-pro-6000/blob/main/models/DeepSeekV4-Flash/results/benchamrk_sweep_report.md" target="_blank" rel="noopener">sweep report ↗</a>.</p>
+  <p>Three patterns (1k/8k, 8k/1k, 1k/1k) at concurrency 1 → 512, streaming client on the isolated benchmark pool, 100% success at every level. Full tables and PNG charts in the <a href="https://github.com/shivajid/sglang-rtx-pro-6000/blob/main/models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md" target="_blank" rel="noopener">sweep report ↗</a>.</p>
 
   <div class="tblwrap" style="padding:10px 6px 2px">
   <svg viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DeepSeek-V4-Flash output throughput versus concurrency, three workload patterns" style="width:100%;height:auto;display:block">

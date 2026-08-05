@@ -23,7 +23,7 @@ Key measured results (standard profile 1024 in / 8192 out, 512 concurrency, unle
 - [Kimi-K2.6](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/KimiK2.6): EAGLE3 speculation + HiCache + GCS Fuse weights; NVFP4 2-node config (repo's best throughput) and bench_one_batch results
 - [Kimi-K2.5](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/KimiK2.5): INT4 vs NVFP4 head-to-head on 16 GPUs with DP8 attention
 - [DeepSeek-V3.2](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/DeepSeekV3.2): NSA attention, EAGLE speculation; 1-node NVFP4 vs 2-node FP8 trade-offs
-- [DeepSeek-V4-Flash](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/DeepSeekV4-Flash): 0731 checkpoint, MXFP4 MoE runner, 2-node concurrency sweep 1→512 with charts; unoptimized 1.6T DeepSeek-V4-Pro config in models/DeepSeekv4
+- [DeepSeek-V4-Flash](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/DeepSeekV4-Flash-0731): 0731 checkpoint, MXFP4 MoE runner, 2-node concurrency sweep 1→512 with charts; unoptimized 1.6T DeepSeek-V4-Pro config in models/DeepSeekv4
 - [Kimi-K3](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/kimik3): GB200 LeaderWorkerSet configs (TP16·DCP16 / TP32·DCP32), concurrency sweep 1→512 with charts, ViBench agentic coding reports
 - [GLM-5.1](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/GLM5.1): NEXTN speculation; super-linear 1→2 node scaling under saturation
 - [GLM-5.2](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/GLM5.2): FP8 2-node G4 results and GB300 (A4X Max) NVFP4 single-host setup guide
