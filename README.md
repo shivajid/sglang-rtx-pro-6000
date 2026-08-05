@@ -2,7 +2,7 @@
 
 This page has optimized recipes mostly for GCP G4 (RTX Pro 6000) machines.
 
-But with launch of GLM5.2 and KimiK3, I was forced to use bigger GPUs of GB300 and GB200. For these models you will find recipes for them.
+But with launch of GLM5.2 and KimiK3, the bechmarks have been run GB300 and GB200. There are corresponding benchmarks and recipes.
 
 Overall they have been updated.
 
