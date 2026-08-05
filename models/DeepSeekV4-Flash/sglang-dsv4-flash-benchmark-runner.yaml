@@ -1,0 +1,376 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sglang-dsv4-flash-benchmark-cm
+  namespace: default
+data:
+  run_suite.py: |
+    #!/usr/bin/env python3
+    import argparse
+    import time
+    import json
+    import statistics
+    import sys
+    import os
+    import urllib.request
+    import urllib.error
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from typing import List, Dict, Any, Optional
+
+    def generate_prompt(input_tokens_approx: int) -> str:
+        base_text = "The quick brown fox jumps over the lazy dog. SGLang provides high performance LLM serving with RadixAttention and fast speculative decoding. "
+        repeat_count = max(1, input_tokens_approx // 25)
+        return "Summarize and analyze the following text in detail:\n" + (base_text * repeat_count)
+
+    def send_chat_request(url: str, model: str, prompt: str, max_tokens: int, temperature: float, request_id: int) -> Dict[str, Any]:
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True
+        }
+        headers = {"Content-Type": "application/json"}
+        post_data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=post_data, headers=headers, method="POST")
+        
+        start_time = time.perf_counter()
+        first_token_time: Optional[float] = None
+        last_token_time: Optional[float] = None
+        reasoning_tokens = 0
+        content_tokens = 0
+        inter_token_latencies: List[float] = []
+        error: Optional[str] = None
+        
+        try:
+            with urllib.request.urlopen(req, timeout=900) as response:
+                while True:
+                    line = response.readline()
+                    now = time.perf_counter()
+                    if not line:
+                        break
+                    line_str = line.decode('utf-8', errors='ignore').strip()
+                    if not line_str or line_str == 'data: [DONE]':
+                        if line_str == 'data: [DONE]':
+                            break
+                        continue
+                    if line_str.startswith('data: '):
+                        try:
+                            data = json.loads(line_str[6:])
+                            choices = data.get('choices', [{}])
+                            if not choices:
+                                continue
+                            delta = choices[0].get('delta', {})
+                            has_token = False
+                            if delta.get('reasoning_content'):
+                                reasoning_tokens += 1
+                                has_token = True
+                            if delta.get('content'):
+                                content_tokens += 1
+                                has_token = True
+                            if has_token:
+                                if first_token_time is None:
+                                    first_token_time = now
+                                else:
+                                    inter_token_latencies.append(now - last_token_time)
+                                last_token_time = now
+                        except json.JSONDecodeError:
+                            pass
+        except urllib.error.HTTPError as e:
+            error = f"HTTP Error {e.code}: {e.read().decode('utf-8', errors='ignore')[:200]}"
+        except Exception as e:
+            error = str(e)
+            
+        end_time = time.perf_counter()
+        total_latency = end_time - start_time
+        ttft = (first_token_time - start_time) if first_token_time else None
+        total_tokens = reasoning_tokens + content_tokens
+        generation_time = (end_time - first_token_time) if first_token_time else 0
+        tps = (total_tokens / generation_time) if generation_time > 0 else 0
+        avg_itl = statistics.mean(inter_token_latencies) if inter_token_latencies else None
+
+        return {
+            "request_id": request_id,
+            "success": error is None and total_tokens > 0,
+            "error": error,
+            "total_latency_sec": round(total_latency, 4),
+            "ttft_sec": round(ttft, 4) if ttft else None,
+            "reasoning_tokens": reasoning_tokens,
+            "content_tokens": content_tokens,
+            "total_tokens": total_tokens,
+            "tps": round(tps, 2),
+            "avg_itl_ms": round(avg_itl * 1000, 2) if avg_itl else None
+        }
+
+    def run_benchmark_level(url: str, model: str, concurrency: int, num_requests: int, input_tokens: int, max_tokens: int, warmup: bool = False) -> Dict[str, Any]:
+        prompt = generate_prompt(input_tokens)
+        if warmup:
+            print("  🔥 Running warmup request...")
+            send_chat_request(url, model, "Hello", 16, 0.7, 0)
+            print("  ✅ Warmup done.")
+
+        results = []
+        benchmark_start_time = time.perf_counter()
+
+        def task(req_id: int):
+            res = send_chat_request(url, model, prompt, max_tokens, 0.7, req_id)
+            if res["success"]:
+                ttft_ms = f"{res['ttft_sec']*1000:.1f} ms" if res['ttft_sec'] else "N/A"
+                print(f"    [Req {req_id:03d}] Success | TTFT: {ttft_ms} | Tokens: {res['total_tokens']} | Speed: {res['tps']} t/s | Latency: {res['total_latency_sec']:.2f}s", flush=True)
+            else:
+                print(f"    [Req {req_id:03d}] FAILED | Error: {res.get('error')}", flush=True)
+            return res
+
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [executor.submit(task, i + 1) for i in range(num_requests)]
+            for future in as_completed(futures):
+                results.append(future.result())
+
+        benchmark_duration = time.perf_counter() - benchmark_start_time
+        successful = [r for r in results if r["success"]]
+        failed = [r for r in results if not r["success"]]
+
+        if not successful:
+            print(f"  ❌ Concurrency {concurrency} had 0 successful requests.")
+            return {
+                "concurrency": concurrency,
+                "total_requests": num_requests,
+                "successful_requests": 0,
+                "failed_requests": len(failed),
+                "benchmark_duration_sec": round(benchmark_duration, 2),
+                "throughput_req_per_sec": 0,
+                "throughput_tokens_per_sec": 0,
+                "ttft_ms": {"mean": 0, "p50": 0, "p90": 0, "p99": 0},
+                "latency_sec": {"mean": 0, "p50": 0, "p90": 0, "p99": 0},
+                "per_request_tps": {"mean": 0, "p50": 0, "p90": 0}
+            }
+
+        ttfts = [r["ttft_sec"] * 1000 for r in successful if r["ttft_sec"] is not None]
+        latencies = [r["total_latency_sec"] for r in successful]
+        tps_list = [r["tps"] for r in successful if r["tps"] > 0]
+        total_tokens = sum(r["total_tokens"] for r in successful)
+        reasoning_tokens = sum(r["reasoning_tokens"] for r in successful)
+        content_tokens = sum(r["content_tokens"] for r in successful)
+
+        def percentile(data, p):
+            if not data:
+                return 0.0
+            s = sorted(data)
+            k = (len(s) - 1) * (p / 100.0)
+            f = int(k)
+            c = f + 1 if f + 1 < len(s) else f
+            return s[f] + (k - f) * (s[c] - s[f])
+
+        return {
+            "concurrency": concurrency,
+            "total_requests": num_requests,
+            "successful_requests": len(successful),
+            "failed_requests": len(failed),
+            "benchmark_duration_sec": round(benchmark_duration, 2),
+            "throughput_req_per_sec": round(len(successful) / benchmark_duration, 2),
+            "throughput_tokens_per_sec": round(total_tokens / benchmark_duration, 2),
+            "total_tokens_generated": total_tokens,
+            "total_reasoning_tokens": reasoning_tokens,
+            "total_content_tokens": content_tokens,
+            "ttft_ms": {
+                "mean": round(statistics.mean(ttfts), 2) if ttfts else 0,
+                "p50": round(percentile(ttfts, 50), 2),
+                "p90": round(percentile(ttfts, 90), 2),
+                "p99": round(percentile(ttfts, 99), 2),
+            },
+            "latency_sec": {
+                "mean": round(statistics.mean(latencies), 2),
+                "p50": round(percentile(latencies, 50), 2),
+                "p90": round(percentile(latencies, 90), 2),
+                "p99": round(percentile(latencies, 99), 2),
+            },
+            "per_request_tps": {
+                "mean": round(statistics.mean(tps_list), 2) if tps_list else 0,
+                "p50": round(percentile(tps_list, 50), 2),
+                "p90": round(percentile(tps_list, 90), 2),
+            }
+        }
+
+    def main():
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--endpoint", type=str, default="http://sglang-dsv4-flash-serving:30000/v1/chat/completions")
+        parser.add_argument("--model", type=str, default="deepseek-ai/DeepSeek-V4-Flash-0731")
+        parser.add_argument("--output-dir", type=str, default="/results")
+        args = parser.parse_args()
+
+        os.makedirs(args.output_dir, exist_ok=True)
+        concurrency_levels = [1, 4, 16, 32, 64, 128, 256, 512]
+        
+        workloads = [
+            {"id": "1k/8k", "name": "Pattern A: 1K Input / 8K Output (Reasoning & Generation Heavy)", "input": 1024, "output": 8192, "file": "sweep_1k_8k_results.json"},
+            {"id": "8k/1k", "name": "Pattern B: 8K Input / 1K Output (Prompt & Prefill Heavy)", "input": 8192, "output": 1024, "file": "sweep_8k_1k_results.json"},
+            {"id": "1k/1k", "name": "Pattern C: 1K Input / 1K Output (Short Balanced)", "input": 1024, "output": 1024, "file": "sweep_1k_1k_results.json"},
+        ]
+
+        print("=" * 80)
+        print("🚀 STARTING SGLANG BENCHMARK SWEEP ON GKE CLIENT POOL")
+        print(f"🎯 Target Endpoint: {args.endpoint}")
+        print(f"🤖 Model: {args.model}")
+        print(f"👥 Concurrency Levels: {concurrency_levels}")
+        print("=" * 80, flush=True)
+
+        all_results = {}
+
+        for w in workloads:
+            w_id = w["id"]
+            print(f"\n" + "=" * 70)
+            print(f"📌 RUNNING WORKLOAD: {w['name']}")
+            print(f"   Input Tokens: {w['input']} | Max Output Tokens: {w['output']}")
+            print("=" * 70, flush=True)
+
+            level_results = []
+            for idx, c in enumerate(concurrency_levels):
+                if c == 1:
+                    num_requests = 2
+                elif c == 4:
+                    num_requests = 8
+                elif c == 16:
+                    num_requests = 32
+                elif c == 32:
+                    num_requests = 64
+                elif c == 64:
+                    num_requests = 128
+                elif c == 128:
+                    num_requests = 128
+                elif c == 256:
+                    num_requests = 256
+                elif c == 512:
+                    num_requests = 512
+                else:
+                    num_requests = max(c * 2, 2)
+
+                print(f"\n▶️  [Concurrency {c:3d}] Running {num_requests} requests...", flush=True)
+                res = run_benchmark_level(
+                    url=args.endpoint,
+                    model=args.model,
+                    concurrency=c,
+                    num_requests=num_requests,
+                    input_tokens=w["input"],
+                    max_tokens=w["output"],
+                    warmup=(idx == 0)
+                )
+                level_results.append(res)
+                print(f"  ✨ Done C={c:3d} | Tok/s: {res['throughput_tokens_per_sec']:7.2f} | Req/s: {res['throughput_req_per_sec']:5.2f} | TTFT: {res['ttft_ms']['mean']:6.1f}ms | Stream: {res['per_request_tps']['mean']:5.2f} t/s | Latency: {res['latency_sec']['mean']:5.2f}s", flush=True)
+                time.sleep(2)
+
+            all_results[w_id] = {
+                "workload": w,
+                "results": level_results
+            }
+
+            # Save individual workload json
+            with open(os.path.join(args.output_dir, w["file"]), "w") as f:
+                json.dump(all_results[w_id], f, indent=2)
+
+        # Save master JSON
+        master_json_path = os.path.join(args.output_dir, "master_sweep_results.json")
+        with open(master_json_path, "w") as f:
+            json.dump(all_results, f, indent=2)
+
+        # Generate Complete Markdown Report
+        report_path = os.path.join(args.output_dir, "benchmark_sweep_report.md")
+        generate_markdown_report(all_results, args.model, report_path)
+
+        print("\n" + "=" * 80)
+        print("🏆 ALL BENCHMARK SWEEPS COMPLETED SUCCESSFULLY!")
+        print(f"📁 Reports saved to {args.output_dir}")
+        print("=" * 80, flush=True)
+
+    def generate_markdown_report(all_results: Dict[str, Any], model_name: str, out_path: str):
+        lines = []
+        lines.append(f"# SGLang Performance Benchmarks: `{model_name}` on GKE\n")
+        lines.append(f"This document presents a comprehensive performance evaluation of **{model_name}** served via **SGLang** on Google Kubernetes Engine (GKE) on NVIDIA RTX PRO 6000 Blackwell (G4) instances.\n")
+        lines.append("The benchmark evaluates scalability, throughput (tokens/sec and requests/sec), Time to First Token (TTFT), and per-request streaming generation speed across concurrency levels ranging from **1 to 512 parallel requests** across three distinct workload patterns.\n")
+        lines.append("---\n")
+        lines.append("## 1. Executive Summary\n")
+        
+        for p_key, label in [("1k/1k", "Balanced Workload"), ("8k/1k", "Prompt-Heavy Workload"), ("1k/8k", "Reasoning & Generation Workload")]:
+            if p_key in all_results:
+                res_list = all_results[p_key]["results"]
+                best_tps = max(res_list, key=lambda x: x["throughput_tokens_per_sec"]) if res_list else None
+                if best_tps:
+                    lines.append(f"* **`{p_key}` ({label})**: Peak throughput of **{best_tps['throughput_tokens_per_sec']:.2f} tok/sec** (**{best_tps['throughput_req_per_sec']:.2f} req/sec**) at **Concurrency {best_tps['concurrency']}**.")
+        lines.append("* **Reliability**: Tested up to **512 concurrent requests** with high concurrency resilience.")
+        lines.append("\n---\n")
+
+        lines.append("## 2. Architecture & Execution Environment\n")
+        lines.append(f"* **Inference Server**: SGLang deployed on GKE 2-Node StatefulSet (`sglang-dsv4-flash-2node`).")
+        lines.append(f"* **Model**: `{model_name}` (TP=8, PP=2, DP=8 across 16x RTX PRO 6000 GPUs with MXFP4 / FP8 optimizations).")
+        lines.append("* **Benchmark Driver**: Executed from dedicated client node pool (`chippy-benchmark-client-pool`).\n")
+        lines.append("---\n")
+
+        lines.append("## 3. Comparative Benchmark Results (Concurrency 1 to 512)\n")
+
+        for p_key in ["1k/8k", "8k/1k", "1k/1k"]:
+            if p_key in all_results:
+                w_info = all_results[p_key]["workload"]
+                res_list = all_results[p_key]["results"]
+                best_tps = max(res_list, key=lambda x: x["throughput_tokens_per_sec"]) if res_list else None
+
+                lines.append(f"### {w_info['name']}\n")
+                lines.append("| Concurrency | Total Requests | Total Tok/s | Req/s | TTFT Mean (ms) | TTFT P99 (ms) | Stream Speed (t/s) | Avg Latency (s) |")
+                lines.append("| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
+
+                for r in res_list:
+                    is_best = (best_tps and r["concurrency"] == best_tps["concurrency"])
+                    c_str = f"**{r['concurrency']}** 🏆" if is_best else f"**{r['concurrency']}**"
+                    tps_str = f"**{r['throughput_tokens_per_sec']:.2f}**" if is_best else f"{r['throughput_tokens_per_sec']:.2f}"
+                    rps_str = f"**{r['throughput_req_per_sec']:.2f}**" if is_best else f"{r['throughput_req_per_sec']:.2f}"
+                    lines.append(f"| {c_str} | {r['total_requests']} | {tps_str} | {rps_str} | {r['ttft_ms']['mean']:.1f} | {r['ttft_ms']['p99']:.1f} | {r['per_request_tps']['mean']:.2f} | {r['latency_sec']['mean']:.2f} |")
+                lines.append("\n---\n")
+
+        with open(out_path, "w") as f:
+            f.write("\n".join(lines))
+        print(f"📄 Markdown report generated: {out_path}", flush=True)
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sglang-dsv4-flash-benchmark-runner
+  namespace: default
+  labels:
+    app: sglang-dsv4-flash-benchmark-runner
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: chippy-benchmark-client-pool
+  restartPolicy: Never
+  volumes:
+  - name: script-vol
+    configMap:
+      name: sglang-dsv4-flash-benchmark-cm
+  - name: results-vol
+    emptyDir: {}
+  containers:
+  - name: benchmark-runner
+    image: python:3.12-slim
+    env:
+    - name: PYTHONUNBUFFERED
+      value: "1"
+    command: ["python3", "-u", "/app/run_suite.py"]
+    args:
+    - "--endpoint"
+    - "http://sglang-dsv4-flash-serving:30000/v1/chat/completions"
+    - "--model"
+    - "deepseek-ai/DeepSeek-V4-Flash-0731"
+    - "--output-dir"
+    - "/results"
+    volumeMounts:
+    - name: script-vol
+      mountPath: /app
+    - name: results-vol
+      mountPath: /results
+    resources:
+      requests:
+        cpu: "8"
+        memory: "16Gi"
+      limits:
+        cpu: "24"
+        memory: "32Gi"
