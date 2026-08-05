@@ -23,7 +23,23 @@ The benchmark evaluates scalability, system aggregate output throughput (**Outpu
 
 ---
 
-## 2. Architecture & Execution Environment
+## 2. Visual Summary
+
+**Output throughput vs concurrency** — throughput scales near-linearly all the way to 512 streams with no plateau: the balanced `1k/1k` pattern reaches **4,711 output tok/s @ 512**, prefill-heavy `8k/1k` reaches **4,209**, and the generation-heavy `1k/8k` pattern reaches **1,606**.
+
+![DeepSeek-V4-Flash output throughput vs concurrency](charts/throughput_vs_concurrency.png)
+
+**Mean TTFT vs concurrency (log scale)** — for 1K prompts, TTFT stays under 1 s through concurrency 256 and only reaches **1.23 s at 512**. The 8K-prompt pattern pays a prefill cost at 512 (7.2 s) but remains far from the queueing collapse seen on other trillion-class models.
+
+![DeepSeek-V4-Flash mean TTFT vs concurrency](charts/ttft_vs_concurrency.png)
+
+**TPOT vs concurrency** — the headline result: from a **75.3 ms/tok** single-stream baseline, TPOT degrades only to **~89 ms at 128 streams** and **106–113 ms at 512**, keeping every user at 8.8–9.4 tok/s under full saturation.
+
+![DeepSeek-V4-Flash TPOT vs concurrency](charts/tpot_vs_concurrency.png)
+
+---
+
+## 3. Architecture & Execution Environment
 
 ### Deployment Topology
 * **Inference Server**: SGLang deployed on GKE 2-Node StatefulSet (`sglang-dsv4-flash-2node`).
@@ -57,7 +73,7 @@ The benchmark evaluates scalability, system aggregate output throughput (**Outpu
 
 ---
 
-## 3. Comparative Benchmark Results (Concurrency 1 to 512)
+## 4. Comparative Benchmark Results (Concurrency 1 to 512)
 
 ### Pattern A: 1K Input / 8K Output (`1k/8k` — Reasoning & Generation Heavy)
 > *Long-form reasoning and decode testing extended generation throughput.*
@@ -107,7 +123,7 @@ The benchmark evaluates scalability, system aggregate output throughput (**Outpu
 
 ---
 
-## 4. Key Performance Insights
+## 5. Key Performance Insights
 
 1. **TPOT Scaling Characteristics**:
    * Baseline single-stream TPOT is **~75.3 ms/token**.

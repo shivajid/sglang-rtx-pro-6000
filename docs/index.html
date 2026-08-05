@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SOTA Benchmarks on Google Cloud G4 — RTX PRO 6000 Recipes</title>
-<meta name="description" content="Measured SGLang and vLLM recipes for serving trillion-parameter open models (Kimi-K2.6, Kimi-K3, DeepSeek-V3.2, GLM-5.1/5.2, Qwen3.5) on Google Cloud G4 with NVIDIA RTX PRO 6000 GPUs — benchmarks, multi-node configs, KV-cache strategies, and the GKE Inference Gateway (llm-d).">
+<meta name="description" content="Measured SGLang and vLLM recipes for serving trillion-parameter open models (Kimi-K2.6, Kimi-K3, DeepSeek-V3.2, DeepSeek-V4-Flash, GLM-5.1/5.2, Qwen3.5) on Google Cloud G4 with NVIDIA RTX PRO 6000 GPUs — benchmarks, multi-node configs, KV-cache strategies, and the GKE Inference Gateway (llm-d).">
 <link rel="canonical" href="https://shivajid.github.io/sglang-rtx-pro-6000/">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="SOTA Benchmarks on Google Cloud G4">
@@ -19,10 +19,10 @@
   "@context": "https://schema.org",
   "@type": "TechArticle",
   "headline": "SOTA Open-Model Serving Benchmarks on Google Cloud G4 (NVIDIA RTX PRO 6000)",
-  "description": "Production-validated SGLang and vLLM serving recipes and benchmarks for trillion-parameter-class open models (Kimi-K2.5/K2.6/K3, DeepSeek-V3.2, GLM-5.1/5.2, Qwen3.5-397B, Whisper, Chandra-OCR) on Google Cloud G4 instances with NVIDIA RTX PRO 6000 Blackwell GPUs — plus Kimi-K3 on GB200 and GLM-5.2 on GB300 — covering NVFP4/FP8/INT4 quantization, multi-node TP/PP parallelism over TCP, HiCache KV offload, agentic trace-replay and ViBench agentic coding benchmarks, and prefix-cache-aware routing with the GKE Inference Gateway (llm-d).",
+  "description": "Production-validated SGLang and vLLM serving recipes and benchmarks for trillion-parameter-class open models (Kimi-K2.5/K2.6/K3, DeepSeek-V3.2, DeepSeek-V4-Flash, GLM-5.1/5.2, Qwen3.5-397B, Whisper, Chandra-OCR) on Google Cloud G4 instances with NVIDIA RTX PRO 6000 Blackwell GPUs — plus Kimi-K3 on GB200 and GLM-5.2 on GB300 — covering NVFP4/FP8/INT4 quantization, multi-node TP/PP parallelism over TCP, HiCache KV offload, agentic trace-replay and ViBench agentic coding benchmarks, and prefix-cache-aware routing with the GKE Inference Gateway (llm-d).",
   "author": {"@type": "Person", "name": "Shivaji Dutta", "url": "https://github.com/shivajid"},
   "url": "https://shivajid.github.io/sglang-rtx-pro-6000/",
-  "dateModified": "2026-08-04",
+  "dateModified": "2026-08-05",
   "isAccessibleForFree": true,
   "about": ["LLM inference", "SGLang", "vLLM", "GKE Inference Gateway", "llm-d", "NVIDIA RTX PRO 6000", "Google Cloud G4", "NVFP4 quantization", "KV cache"],
   "isBasedOn": "https://github.com/shivajid/sglang-rtx-pro-6000"
@@ -296,6 +296,7 @@ ul.plain li{margin-bottom:5px;max-width:66ch}
     <a href="#kimi26" data-page="kimi26">Kimi-K2.6</a>
     <a href="#kimik3" data-page="kimik3">Kimi-K3</a>
     <a href="#deepseek" data-page="deepseek">DeepSeek-V3.2</a>
+    <a href="#dsv4flash" data-page="dsv4flash">DeepSeek-V4-Flash</a>
     <a href="#glm" data-page="glm">GLM-5.1</a>
     <a href="#glm52" data-page="glm52">GLM-5.2</a>
     <a href="#qwen" data-page="qwen">Qwen3.5-397B</a>
@@ -321,7 +322,7 @@ ul.plain li{margin-bottom:5px;max-width:66ch}
   <p>We showcase optimized serving recipes on GKE with 1 or 2 nodes, covering both original checkpoints and NVIDIA's NVFP4 checkpoints. The RTX PRO 6000 is a Blackwell SM120 chip, and many attention kernels are not yet developed for it — despite these challenges, we have managed to get very good performance. Most results here are throughput-oriented, and these recipes have been implemented by Google Cloud customers at production scale.</p>
   <p>We complement the multi-node setup with the <a href="#gateway">GKE Inference Gateway (llm-d)</a>, which provides KV-cache-aware multi-node inferencing, demonstrated in multi-region and multi-cluster setups.</p>
   <p>We also showcase Kimi-K2.6 with a very long, multi-step <a href="#agentic">agentic benchmark</a> (up to 250 steps) that uses HiCache to offload GPU KV cache to the host, and we have experimented with L3 cache on Google Cloud Managed Lustre. For agentic workloads we found that lowering concurrency/batch size can give a more optimal setting than multi-node pipeline parallelism — a research field that needs further exploration. The Kimi-K2.6 setup has been tested with the <a href="#gateway">Inference Gateway</a> on both SGLang and vLLM, and we made many improvements to llm-d and SGLang in the process. There are perhaps hundreds of failed experiments behind these results — we want to thank RadixArk (SGLang contributors) for their overwhelming support in coming up with these benchmarks.</p>
-  <p><b>New in July–August 2026:</b> <a href="#kimik3">Kimi-K3</a> (released Jul 27, 2026) — a full concurrency sweep on a 4-node GB200 setup plus a 24-app ViBench agentic coding run on 8 nodes — and <a href="#glm52">GLM-5.2</a>, benchmarked in FP8 on the standard 2-node G4 setup and validated in NVFP4 on GB300 (A4X Max).</p>
+  <p><b>New in July–August 2026:</b> <a href="#kimik3">Kimi-K3</a> (released Jul 27, 2026) — a full concurrency sweep on a 4-node GB200 setup plus a 24-app ViBench agentic coding run on 8 nodes — and <a href="#glm52">GLM-5.2</a>, benchmarked in FP8 on the standard 2-node G4 setup and validated in NVFP4 on GB300 (A4X Max). <a href="#dsv4flash">DeepSeek-V4-Flash</a> (0731 checkpoint) followed in August: a 2-node concurrency sweep that scales to 4,711 output tok/s with no saturation plateau, alongside a first (unoptimized) config for the 1.6T DeepSeek-V4-Pro.</p>
   <div class="meta">
     <span class="chip">RTX PRO 6000 · <b>96 GB</b></span>
     <span class="chip">g4-standard-384 · <b>8× GPU</b></span>
@@ -341,6 +342,7 @@ ul.plain li{margin-bottom:5px;max-width:66ch}
       <tr><td><a href="#k26-nvfp4">Kimi-K2.6</a><span class="q">NVFP4</span></td><td>2n · 16 GPU<div class="rd">Jun 2026</div></td><td class="num"><span class="best">3261.28</span></td><td class="num">203.8</td><td><div class="bar" style="width:61%"></div></td><td class="num">138.54</td></tr>
       <tr><td><a href="#ds-fp8">DeepSeek-V3.2</a><span class="q b">FP8</span></td><td>2n · 16 GPU<div class="rd">Dec 2025</div></td><td class="num">2962.79</td><td class="num">185.2</td><td><div class="bar" style="width:55%"></div></td><td class="num">149.29</td></tr>
       <tr><td><a href="#ds-nvfp4">DeepSeek-V3.2</a><span class="q">NVFP4</span>†</td><td>1n · 8 GPU</td><td class="num">2675.33</td><td class="num"><span class="best">334.4</span></td><td><div class="bar" style="width:100%"></div></td><td class="num">106.03</td></tr>
+      <tr><td><a href="#dsv4flash">DeepSeek-V4-Flash</a><span class="q">MXFP4</span>‡</td><td>2n · 16 GPU<div class="rd">Aug 2026</div></td><td class="num">1606.27</td><td class="num">100.4</td><td><div class="bar" style="width:30%"></div></td><td class="num">107.64</td></tr>
       <tr><td><a href="#glm-fp8">GLM-5.1</a><span class="q b">FP8</span></td><td>2n · 16 GPU<div class="rd">Apr 2026</div></td><td class="num">2785.55</td><td class="num">174.1</td><td><div class="bar" style="width:52%"></div></td><td class="num">155.26</td></tr>
       <tr><td><a href="#glm-nvfp4-1">GLM-5.1</a><span class="q">NVFP4</span></td><td>1n · 8 GPU</td><td class="num">1490.31</td><td class="num">186.3</td><td><div class="bar" style="width:56%"></div></td><td class="num">73.82</td></tr>
       <tr><td><a href="#glm">GLM-5.1</a><span class="q">NVFP4</span></td><td>2n · 16 GPU</td><td class="num">3075.85</td><td class="num">192.2</td><td><div class="bar" style="width:57%"></div></td><td class="num">141.36</td></tr>
@@ -348,12 +350,13 @@ ul.plain li{margin-bottom:5px;max-width:66ch}
       <tr><td><a href="#ocr">Chandra-OCR-2</a><span class="q a">VLM</span></td><td>1 GPU</td><td class="num">2600.67</td><td class="num">—</td><td style="color:var(--faint);font-size:11.5px">image workload</td><td class="num"><span class="best">32.47</span></td></tr>
     </tbody>
   </table></div>
-  <p style="font-size:12.5px;color:var(--soft)">† 512 prompts (others 1536) with EAGLE speculation — flatters per-GPU; its median TTFT is 18.7 s vs 0.33 s for FP8 2-node. Scaling can be super-linear under saturation: GLM NVFP4 goes 1490 → 3076 tok/s from 1 → 2 nodes. Kimi-K2.5 INT4 rerun with an optimized DP8 config; the Kimi-K2.6 INT4 1-node config is work-in-progress, not yet optimized. GLM-5.2 FP8 is an early, unoptimized config (radix cache disabled, triton MoE runner). Kimi-K3 is excluded from this table — it ran on GB200, not G4; see <a href="#kimik3">its page</a>. Refreshed Aug 4, 2026.</p>
+  <p style="font-size:12.5px;color:var(--soft)">† 512 prompts (others 1536) with EAGLE speculation — flatters per-GPU; its median TTFT is 18.7 s vs 0.33 s for FP8 2-node. Scaling can be super-linear under saturation: GLM NVFP4 goes 1490 → 3076 tok/s from 1 → 2 nodes. Kimi-K2.5 INT4 rerun with an optimized DP8 config; the Kimi-K2.6 INT4 1-node config is work-in-progress, not yet optimized. GLM-5.2 FP8 is an early, unoptimized config (radix cache disabled, triton MoE runner). ‡ DeepSeek-V4-Flash numbers come from its concurrency sweep (512 prompts, 1k/8k @ 512c) rather than the 1536-prompt standard run; its balanced-workload peak is 4,711 tok/s — <a href="#dsv4-results">see its page</a>. Kimi-K3 is excluded from this table — it ran on GB200, not G4; see <a href="#kimik3">its page</a>. Refreshed Aug 5, 2026.</p>
 
   <h3 id="ov-more">Other benchmarks</h3>
   <div class="tblwrap"><table>
     <thead><tr><th>Benchmark</th><th>Key result</th><th>Details</th></tr></thead>
     <tbody>
+      <tr><td>DeepSeek-V4-Flash sweep · 2n G4</td><td>4,711 output tok/s @ 512c (1k/1k), TPOT 75 → 107 ms from 1 → 512 streams</td><td><a href="#dsv4-results">results</a></td></tr>
       <tr><td>Kimi-K3 concurrency sweep · 4n GB200</td><td>2,883 tok/s peak (1k/1k @ 256c); 128c is the best latency envelope</td><td><a href="#k3-results">results</a></td></tr>
       <tr><td>Kimi-K3 ViBench agentic coding · 8n GB200</td><td>95.6/100 avg over 24 apps (regular reasoning); 81.5 with reasoning_effort low</td><td><a href="#k3-vibench">results</a></td></tr>
       <tr><td>NCCL AllReduce · dual NIC</td><td>37.9 GB/s (~303 Gbps); 38.2 GB/s @ 2 GB payload</td><td><a href="#nw-results">results</a></td></tr>
@@ -374,6 +377,7 @@ ul.plain li{margin-bottom:5px;max-width:66ch}
     <a href="#kimi26"><span class="it">Kimi-K2.6 <span style="color:var(--faint);font-weight:400;font-size:12px">Jun 2026</span></span><span class="id">EAGLE3 + HiCache + GCS Fuse — NVFP4 2-node is the repo's best at 3,261 tok/s</span></a>
     <a href="#kimik3"><span class="it">Kimi-K3 <span style="color:var(--faint);font-weight:400;font-size:12px">Jul 2026</span></span><span class="id">GB200 · TP16/DCP16 · concurrency sweep to 512 + ViBench agentic coding at 95.6/100</span></a>
     <a href="#deepseek"><span class="it">DeepSeek-V3.2 <span style="color:var(--faint);font-weight:400;font-size:12px">Dec 2025</span></span><span class="id">FP8 distributed · NVFP4 single node — most-downloaded model here (3.7M HF downloads/mo)</span></a>
+    <a href="#dsv4flash"><span class="it">DeepSeek-V4-Flash <span style="color:var(--faint);font-weight:400;font-size:12px">Aug 2026</span></span><span class="id">0731 checkpoint · MXFP4 MoE — 4,711 tok/s @ 512c with no saturation plateau; V4-Pro 1.6T config included</span></a>
     <a href="#glm"><span class="it">GLM-5.1 <span style="color:var(--faint);font-weight:400;font-size:12px">Apr 2026</span></span><span class="id">FP8 + NVFP4, 1- and 2-node, NEXTN speculation</span></a>
     <a href="#glm52"><span class="it">GLM-5.2 <span style="color:var(--faint);font-weight:400;font-size:12px">Jul 2026</span></span><span class="id">FP8 on 2-node G4 (early config) · NVFP4 validated on GB300 A4X Max</span></a>
     <a href="#qwen"><span class="it">Qwen3.5-397B <span style="color:var(--faint);font-weight:400;font-size:12px">Feb 2026</span></span><span class="id">HiCache latency A/B at 20K-token prompts</span></a>
@@ -629,7 +633,73 @@ python3 -m sglang.bench_serving \
     </tbody>
   </table></div>
   <div class="callout"><p>NVFP4 decodes faster on half the hardware; FP8 2-node wins aggregate throughput and keeps TTFT sub-second under saturation thanks to extra prefill capacity.</p></div>
-  <div class="pagenav"><a href="#kimi25">← Kimi-K2.5</a><a href="#deepseek">DeepSeek-V3.2 →</a></div>
+  <div class="pagenav"><a href="#kimi25">← Kimi-K2.5</a><a href="#dsv4flash">DeepSeek-V4-Flash →</a></div>
+</section>
+
+<!-- DEEPSEEK-V4-FLASH -->
+<section class="page" id="page-dsv4flash">
+  <h1 class="pagetitle">DeepSeek-V4-Flash</h1>
+  <p class="lede">DeepSeek's Jul 31, 2026 flash checkpoint on the standard 2-node G4 setup: a full concurrency sweep (1 → 512, three workload patterns) that keeps scaling all the way to 4,711 output tok/s — with TPOT barely moving from its single-stream baseline.</p>
+  <div class="meta"><span class="chip">deepseek-ai/DeepSeek-V4-Flash-0731</span><span class="chip"><a href="https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/DeepSeekV4-Flash" target="_blank" rel="noopener" style="text-decoration:none">files on GitHub ↗</a></span><span class="chip">2n · <b>16× GPU</b></span><span class="chip">TP8 · PP2 · DP8</span><span class="chip">MXFP4 MoE</span><span class="chip">kv fp8_e4m3</span><span class="chip">dev-cu13</span></div>
+
+  <div class="codeblock"><div class="chead"><span><a href="https://github.com/shivajid/sglang-rtx-pro-6000/blob/main/models/DeepSeekV4-Flash/sglang-dsv4-flash-2node.yaml" target="_blank" rel="noopener" style="color:inherit">models/DeepSeekV4-Flash/sglang-dsv4-flash-2node.yaml</a></span><button class="copybtn">Copy</button></div><pre>python3 -m sglang.launch_server \
+  --model-path deepseek-ai/DeepSeek-V4-Flash-0731 --trust-remote-code \
+  --tensor-parallel-size 8 --pipeline-parallel-size 2 --dp-size 8 --enable-dp-attention \
+  --nnodes 2 --node-rank $POD_INDEX --dist-init-addr sglang-dsv4-flash-master:5000 \
+  --moe-runner-backend flashinfer_mxfp4 --kv-cache-dtype fp8_e4m3 \
+  --disable-custom-all-reduce \
+  --mem-fraction-static 0.80 --cuda-graph-max-bs-decode 32 --max-running-requests 768 \
+  --chunked-prefill-size 16384 --context-length 131072 --page-size 256 \
+  --enable-mixed-chunk --reasoning-parser deepseek-v3 --tool-call-parser deepseekv32 \
+  --enable-metrics --host 0.0.0.0 --port 30000</pre></div>
+
+  <h3 id="dsv4-results">Concurrency sweep — 2 nodes</h3>
+  <p>Three patterns (1k/8k, 8k/1k, 1k/1k) at concurrency 1 → 512, streaming client on the isolated benchmark pool, 100% success at every level. Full tables and PNG charts in the <a href="https://github.com/shivajid/sglang-rtx-pro-6000/blob/main/models/DeepSeekV4-Flash/results/benchamrk_sweep_report.md" target="_blank" rel="noopener">sweep report ↗</a>.</p>
+
+  <div class="tblwrap" style="padding:10px 6px 2px">
+  <svg viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DeepSeek-V4-Flash output throughput versus concurrency, three workload patterns" style="width:100%;height:auto;display:block">
+    <g stroke="var(--line)" stroke-width="1">
+      <line x1="55" y1="270" x2="645" y2="270"/>
+      <line x1="55" y1="220" x2="645" y2="220" stroke-dasharray="3 4"/>
+      <line x1="55" y1="170" x2="645" y2="170" stroke-dasharray="3 4"/>
+      <line x1="55" y1="120" x2="645" y2="120" stroke-dasharray="3 4"/>
+      <line x1="55" y1="70"  x2="645" y2="70"  stroke-dasharray="3 4"/>
+      <line x1="55" y1="20"  x2="645" y2="20"  stroke-dasharray="3 4"/>
+    </g>
+    <g fill="var(--faint)" font-size="10.5" text-anchor="end">
+      <text x="50" y="273">0</text><text x="50" y="223">1,000</text><text x="50" y="173">2,000</text><text x="50" y="123">3,000</text><text x="50" y="73">4,000</text><text x="50" y="23">5,000</text>
+    </g>
+    <g fill="var(--faint)" font-size="10.5" text-anchor="middle">
+      <text x="60" y="288">1</text><text x="189" y="288">4</text><text x="318" y="288">16</text><text x="382" y="288">32</text><text x="447" y="288">64</text><text x="511" y="288">128</text><text x="576" y="288">256</text><text x="640" y="288">512</text>
+      <text x="350" y="308" fill="var(--soft)">concurrency (log scale) — output tok/s</text>
+    </g>
+    <polyline fill="none" stroke="#1A56DB" stroke-width="2" points="60,269 189,268 318,262 382,261 447,256 511,244 576,204 640,190"/>
+    <polyline fill="none" stroke="#B45309" stroke-width="2" points="60,269 189,268 318,260 382,251 447,234 511,200 576,142 640,60"/>
+    <polyline fill="none" stroke="#047857" stroke-width="2" points="60,269 189,267 318,260 382,251 447,234 511,200 576,139 640,35"/>
+    <g fill="#1A56DB"><circle cx="640" cy="190" r="3"/></g>
+    <g fill="#B45309"><circle cx="640" cy="60" r="3"/></g>
+    <g fill="#047857"><circle cx="640" cy="35" r="3"/></g>
+    <g font-size="11">
+      <line x1="70" y1="38" x2="92" y2="38" stroke="#047857" stroke-width="2"/><text x="98" y="42" fill="var(--soft)">1k/1k — 4,711 @ 512, still climbing</text>
+      <line x1="70" y1="56" x2="92" y2="56" stroke="#B45309" stroke-width="2"/><text x="98" y="60" fill="var(--soft)">8k/1k — 4,209 @ 512</text>
+      <line x1="70" y1="74" x2="92" y2="74" stroke="#1A56DB" stroke-width="2"/><text x="98" y="78" fill="var(--soft)">1k/8k — 1,606 @ 512</text>
+    </g>
+  </svg>
+  </div>
+
+  <div class="tblwrap"><table>
+    <thead><tr><th>Pattern</th><th class="num">Peak output tok/s</th><th class="num">@ conc</th><th class="num">Req/s</th><th class="num">TTFT mean @ 512</th><th class="num">TPOT @ 512</th></tr></thead>
+    <tbody>
+      <tr><td>1k / 1k · balanced</td><td class="num"><span class="best">4,710.94</span></td><td class="num">512</td><td class="num">4.62</td><td class="num"><span class="best">1.23 s</span></td><td class="num">106.50 ms</td></tr>
+      <tr><td>8k / 1k · prefill-heavy</td><td class="num">4,209.22</td><td class="num">512</td><td class="num">4.13</td><td class="num">7.19 s</td><td class="num">113.38 ms</td></tr>
+      <tr><td>1k / 8k · reasoning</td><td class="num">1,606.27</td><td class="num">512</td><td class="num">0.68</td><td class="num">1.55 s</td><td class="num">107.64 ms</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout"><p><b>No saturation plateau.</b> Every pattern is still gaining throughput at 512 streams — unlike the other trillion-class recipes here, which peak at 128–256. TPOT moves only 75.3 → 106–113 ms from 1 → 512 streams, and 1K-prompt TTFT stays under 1 s through 256 streams (1.23 s at 512). MXFP4 MoE kernels + FP8 KV cache + DP attention held all 512 streams with zero failures.</p></div>
+
+  <h3 id="dsv4-pro">DeepSeek-V4-Pro — 1.6T, runs on 2 nodes wip</h3>
+  <p>The 1.6T-parameter <code class="inline">deepseek-ai/DeepSeek-V4-Pro</code> also runs on the same 2-node topology (FP8, <code class="inline">--attention-backend dsv4</code>, kv fp8_e4m3, mem 0.85) — config at <a href="https://github.com/shivajid/sglang-rtx-pro-6000/blob/main/models/DeepSeekv4/sglang-dsv4-pro-2nodel.yaml" target="_blank" rel="noopener">models/DeepSeekv4/sglang-dsv4-pro-2nodel.yaml ↗</a>. Not yet optimized or benchmarked; numbers to follow.</p>
+  <div class="pagenav"><a href="#deepseek">← DeepSeek-V3.2</a><a href="#glm">GLM-5.1 →</a></div>
 </section>
 
 <!-- GLM -->
@@ -898,6 +968,7 @@ kubectl port-forward svc/sglang-kimi-k3-svc 30100:30100
 python3 concurrency_sweep.py --endpoint http://localhost:30100 \
   --model moonshotai/Kimi-K3 --concurrency-levels 128,256,512 \
   --input-tokens 1024 --max-tokens 8192 --output-json sweep_1k_8k_high.json</pre></div>
+  <p style="font-size:12.5px;color:var(--soft)">A small FastAPI + JS chat console for this deployment (K3 Console) ships in <a href="https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/kimik3/chatapp" target="_blank" rel="noopener">models/kimik3/chatapp ↗</a> — deployment, service, and configmap included.</p>
   <div class="pagenav"><a href="#kimi26">← Kimi-K2.6</a><a href="#deepseek">DeepSeek-V3.2 →</a></div>
 </section>
 
