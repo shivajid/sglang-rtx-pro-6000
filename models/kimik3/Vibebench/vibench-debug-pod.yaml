@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vibench-debug-pod
+  namespace: default
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: cpu-pool-4
+  restartPolicy: Never
+  containers:
+  - name: debug
+    image: europe-west4-docker.pkg.dev/northam-ce-mlai-tpu/sglang-repo/vibench-runner:latest
+    imagePullPolicy: Always
+    volumeMounts:
+    - name: env-creator-mount
+      mountPath: /workspace/_harness/runner/scripts/env_creator.py
+      subPath: env_creator.py
+    - name: populate-script-mount
+      mountPath: /workspace/scripts/populate_results_folder.py
+      subPath: populate_results_folder.py
+    command:
+    - /bin/bash
+    - -c
+    args:
+    - |
+      echo "Waiting for Docker daemon..."
+      until docker info >/dev/null 2>&1; do
+        sleep 1
+      done
+      echo "✓ Docker daemon is ready!"
+
+      echo "Testing connection to sglang-kimi-k3 server..."
+      curl -v http://sglang-kimi-k3-svc.default.svc.cluster.local:30100/v1/models
+
+      echo "Running single build for notes app with kimi_k3_gke..."
+      python3 _harness/runner/scripts/build_mvp.py notes kimi_k3_gke /workspace/results/notes/kimi_k3_gke/mvp /workspace/output 2>&1
+      
+      echo "Debug script complete!"
+      sleep 300
+    env:
+    - name: DOCKER_HOST
+      value: tcp://localhost:2375
+    - name: KIMI_K3_GKE_ENDPOINT
+      value: "http://sglang-kimi-k3-svc.default.svc.cluster.local:30100/v1"
+    - name: KIMI_K3_MODEL_NAME
+      value: "openai/moonshotai/Kimi-K3"
+  - name: dind
+    image: docker:dind
+    securityContext:
+      privileged: true
+    env:
+    - name: DOCKER_TLS_CERTDIR
+      value: ""
+  volumes:
+  - name: env-creator-mount
+    configMap:
+      name: vibench-env-creator
+  - name: populate-script-mount
+    configMap:
+      name: vibench-populate-results

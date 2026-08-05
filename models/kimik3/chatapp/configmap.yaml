@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k3-console-config
+  namespace: shivajid
+data:
+  # Point these at your SGLang Services. Both must speak the OpenAI-compatible API.
+  SGLANG_BASE_URL: "http://shivajid-sglang-kimi-k3-svc.shivajid.svc.cluster.local:30100/v1"
+  CHAT_MODEL: "moonshotai/Kimi-K3"
+  IMAGE_BASE_URL: "http://sglang-diffusion.serving.svc.cluster.local:30010/v1"
+  IMAGE_MODEL: "Qwen/Qwen-Image"
+  MAX_REQUEST_MB: "24"
+  MAX_IMAGE_MB: "8"
+  READ_TIMEOUT_SECONDS: "900"
+  IMAGE_TIMEOUT_SECONDS: "600"
+  DEFAULT_TEMPERATURE: "0.6"
+---
+# Only needed if your SGLang servers require a bearer token.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: k3-console-secrets
+  namespace: shivajid
+type: Opaque
+stringData:
+  SGLANG_API_KEY: ""
+  APP_TOKEN: ""

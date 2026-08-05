@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vibench-kimik3-runner
+  namespace: shivajid
+  labels:
+    app: vibench-runner
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: cpu-pool-4
+  restartPolicy: Never
+  containers:
+  - name: runner
+    image: europe-west4-docker.pkg.dev/northam-ce-mlai-tpu/sglang-repo/vibench-runner:latest
+    imagePullPolicy: Always
+    volumeMounts:
+    - name: env-creator-mount
+      mountPath: /workspace/_harness/runner/scripts/env_creator.py
+      subPath: env_creator.py
+    - name: populate-script-mount
+      mountPath: /workspace/scripts/populate_results_folder.py
+      subPath: populate_results_folder.py
+    command:
+    - /bin/bash
+    - -c
+    args:
+    - |
+      set -e
+      echo "Starting ViBench runner for Kimi-K3..."
+      touch /workspace/copy_finished
+
+      # Wait for Docker daemon sidecar
+      echo "Waiting for Docker daemon..."
+      until docker info >/dev/null 2>&1; do
+        sleep 1
+      done
+      echo "✓ Docker daemon is ready!"
+
+      echo "============================================================"
+      echo "Testing connection to shivajid-sglang-kimi-k3 server..."
+      echo "============================================================"
+      until curl -s ${KIMI_K3_GKE_ENDPOINT}/models >/dev/null 2>&1; do
+        echo "Waiting for shivajid-sglang-kimi-k3 server at ${KIMI_K3_GKE_ENDPOINT}..."
+        sleep 5
+      done
+      echo "✓ Kimi-K3 server is reachable!"
+
+      echo "============================================================"
+      echo "Wiping any old results/artifacts for a 100% clean build..."
+      echo "============================================================"
+      rm -rf /workspace/results/* /workspace/output/* /workspace/logs/build/* || true
+
+      echo "============================================================"
+      echo "Populating ViBench results folder structure..."
+      echo "============================================================"
+      python3 scripts/populate_results_folder.py
+
+      echo "============================================================"
+      echo "Starting ViBench pipeline for Kimi-K3 from scratch (build -> seed -> evaluate)..."
+      echo "============================================================"
+      python3 scripts/run_all_pipeline.py --yes --models kimi_k3_gke --features mvp --apps all --build-parallel 4 --seed-parallel 4 --evaluate-parallel 4 || true
+
+      echo "============================================================"
+      echo "Analyzing results..."
+      echo "============================================================"
+      python3 scripts/analyze_results.py --models kimi_k3_gke
+
+      echo "============================================================"
+      echo "ViBench pipeline execution complete!"
+      echo "============================================================"
+      sleep infinity
+    env:
+    - name: DOCKER_HOST
+      value: tcp://localhost:2375
+    - name: KIMI_K3_GKE_ENDPOINT
+      value: "http://10.0.45.181:30100/v1"
+    - name: KIMI_K3_MODEL_NAME
+      value: "openai/moonshotai/Kimi-K3"
+  - name: dind
+    image: docker:dind
+    securityContext:
+      privileged: true
+    env:
+    - name: DOCKER_TLS_CERTDIR
+      value: ""
+  volumes:
+  - name: env-creator-mount
+    configMap:
+      name: vibench-env-creator
+  - name: populate-script-mount
+    configMap:
+      name: vibench-populate-results

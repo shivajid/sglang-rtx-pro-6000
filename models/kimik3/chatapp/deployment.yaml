@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k3-console
+  namespace: shivajid
+  labels: { app: k3-console }
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: { app: k3-console }
+  strategy:
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels: { app: k3-console }
+    spec:
+      # --- keep this workload on the CPU pool, off the GPU nodes ---
+      nodeSelector:
+        cloud.google.com/gke-nodepool: cpu-pool-4
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: cloud.google.com/gke-accelerator
+                    operator: DoesNotExist
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: k3-console }
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: app
+          # gcloud artifacts repositories create apps --repository-format=docker --location=us-central1
+          image: us-central1-docker.pkg.dev/supercomputer-testing/my-docker-repo/k3-console:0.1.0
+          imagePullPolicy: Always
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - configMapRef: { name: k3-console-config }
+            - secretRef: { name: k3-console-secrets }
+          resources:
+            requests: { cpu: "100m", memory: "192Mi" }
+            limits:   { cpu: "1000m", memory: "512Mi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 20
+            periodSeconds: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 3
+          # /readyz checks the SGLang upstream: pods drop out of the load balancer
+          # when the model server is unreachable rather than serving broken chats.
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: k3-console
+  namespace: shivajid
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: k3-console }

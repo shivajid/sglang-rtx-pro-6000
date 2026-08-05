@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vibench-suite-runner
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: vibebench-client-pool
+  restartPolicy: Never
+  containers:
+  - name: runner
+    image: europe-west4-docker.pkg.dev/northam-ce-mlai-tpu/sglang-repo/vibench-runner:latest
+    volumeMounts:
+    - name: env-creator-mount
+      mountPath: /workspace/_harness/runner/scripts/env_creator.py
+      subPath: env_creator.py
+    - name: populate-script-mount
+      mountPath: /workspace/scripts/populate_results_folder.py
+      subPath: populate_results_folder.py
+    command:
+    - /bin/bash
+    - -c
+    args:
+    - |
+      # Wait for copy finish signal file
+      echo "Waiting for /workspace/copy_finished to start the pipeline..."
+      until [ -f "/workspace/copy_finished" ]; do
+        sleep 2
+      done
+      echo "✓ Copy finished! Starting execution..."
+
+      # Wait for Docker daemon sidecar
+      echo "Waiting for Docker daemon..."
+      until docker info >/dev/null 2>&1; do
+        sleep 1
+      done
+      echo "✓ Docker daemon is ready!"
+
+      echo "============================================================"
+      echo "Populating ViBench results folder structure..."
+      echo "============================================================"
+      python3 scripts/populate_results_folder.py
+
+      echo "============================================================"
+      echo "Checking for pre-existing build outputs in /workspace/output..."
+      echo "============================================================"
+      for app_dir in /workspace/output/*; do
+        if [ -d "$app_dir" ]; then
+          app_name=$(basename "$app_dir")
+          dest_dir="/workspace/results/$app_name/glm_5.2_gke/mvp/output"
+          echo "Found existing output for $app_name. Copying to $dest_dir..."
+          mkdir -p "$dest_dir"
+          cp -r "$app_dir"/* "$dest_dir/"
+        fi
+      done
+
+      echo "============================================================"
+      echo "Starting ViBench pipeline (build -> seed -> evaluate)..."
+      echo "============================================================"
+      python3 scripts/run_all_pipeline.py --yes --models glm_5.2_gke --features mvp --apps all
+
+      echo "============================================================"
+      echo "Analyzing results..."
+      echo "============================================================"
+      python3 scripts/analyze_results.py --models glm_5.2_gke
+
+      echo "============================================================"
+      echo "ViBench pipeline execution complete!"
+      echo "============================================================"
+      sleep infinity
+    env:
+    - name: DOCKER_HOST
+      value: tcp://localhost:2375
+    - name: GLM_5_2_GKE_ENDPOINT
+      value: http://10.10.3.222:8002/v1
+  - name: dind
+    image: docker:dind
+    securityContext:
+      privileged: true
+    env:
+    - name: DOCKER_TLS_CERTDIR
+      value: ""
+  volumes:
+  - name: env-creator-mount
+    configMap:
+      name: vibench-env-creator
+  - name: populate-script-mount
+    configMap:
+      name: vibench-populate-results

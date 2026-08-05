@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<title>Kimi-K3 · console</title>
+<link rel="stylesheet" href="/static/styles.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231F5E56'/><rect x='8' y='14' width='16' height='4' fill='%23E9EBE4'/></svg>" />
+</head>
+<body>
+<header class="bar">
+  <div class="bar-id">
+    <span class="dot" id="status-dot" title="Checking upstream"></span>
+    <span class="wordmark">K3 console</span>
+    <span class="tag" id="model-tag">connecting…</span>
+  </div>
+  <div class="bar-actions">
+    <button id="btn-settings" class="ghost" aria-expanded="false">Settings</button>
+    <button id="btn-new" class="ghost">New chat</button>
+  </div>
+</header>
+
+<section id="settings" class="settings" hidden>
+  <label class="field wide">
+    <span>System prompt</span>
+    <textarea id="sys-prompt" rows="2" placeholder="Optional. Sets the model's standing instructions."></textarea>
+  </label>
+  <label class="field">
+    <span>Temperature <b id="temp-val">0.6</b></span>
+    <input id="temp" type="range" min="0" max="1.5" step="0.05" value="0.6" />
+  </label>
+  <label class="field">
+    <span>Max output tokens</span>
+    <input id="max-tokens" type="number" min="64" max="262144" step="64" placeholder="server default" />
+  </label>
+  <label class="field">
+    <span>Image size</span>
+    <select id="img-size">
+      <option>1024x1024</option>
+      <option>1328x1328</option>
+      <option>1280x720</option>
+      <option>720x1280</option>
+      <option>512x512</option>
+    </select>
+  </label>
+  <label class="field check">
+    <input id="show-thinking" type="checkbox" checked />
+    <span>Show reasoning traces</span>
+  </label>
+</section>
+
+<main id="thread" class="thread" aria-live="polite">
+  <div class="empty" id="empty">
+    <h1>Talk to Kimi&#8209;K3.</h1>
+    <p>Attach an image and ask about it, or switch the composer to <b>Generate image</b> to draw one.</p>
+    <div class="starters">
+      <button class="starter">Read this screenshot and list every error you can see.</button>
+      <button class="starter">Summarise this diagram for someone who has not seen it.</button>
+      <button class="starter">Draw a cutaway of a GPU server rack, technical illustration.</button>
+    </div>
+  </div>
+</main>
+
+<form id="composer" class="composer" autocomplete="off">
+  <div class="mode" role="tablist" aria-label="Composer mode">
+    <button type="button" class="mode-btn is-on" data-mode="chat" role="tab">Chat</button>
+    <button type="button" class="mode-btn" data-mode="image" role="tab" id="mode-image">Generate image</button>
+  </div>
+  <div id="tray" class="tray" hidden></div>
+  <div class="input-row">
+    <label class="attach" title="Attach images">
+      <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M21 11.5 12.5 20a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="sr">Attach images</span>
+    </label>
+    <textarea id="input" rows="1" placeholder="Ask anything. Enter sends, Shift+Enter adds a line."></textarea>
+    <button id="send" type="submit" class="send">Send</button>
+    <button id="stop" type="button" class="send stop" hidden>Stop</button>
+  </div>
+  <p class="hint" id="hint"></p>
+</form>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
