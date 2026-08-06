@@ -48,7 +48,7 @@ export GEMINI_DEFAULT_AUTH_TYPE="sglang"
 ```
 
 
-## 3. Run Gemini CLI
+## Run Gemini CLI
 ```
 npx @shivajidnpm2026/gemini-cli
 ```
