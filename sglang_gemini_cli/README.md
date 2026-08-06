@@ -19,7 +19,7 @@ npm -v    # Should be 10.x or higher
 ```
 ##Verify Model Access
 ```
-# Verify Model Access. here IP Address is the IP of the service/pod. -> 10.0.0.16. Find your IP.
+# Verify Model Access. In this example I have  IP Address 10.0.0.16 for the service/pod, replace with your IP.
 
 # List the model
 curl http://10.0.0.16:30000/v1/models 
