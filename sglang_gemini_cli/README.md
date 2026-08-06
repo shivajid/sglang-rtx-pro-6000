@@ -23,7 +23,10 @@ npm -v    # Should be 10.x or higher
 
 # List the model
 curl http://10.0.0.16:30000/v1/models 
-# Sample Prompt curl http://10.0.0.16:30000/v1/chat/completions   -H "Content-Type: application/json"   -d '{
+
+# Sample Prompt 
+
+curl http://10.0.0.16:30000/v1/chat/completions   -H "Content-Type: application/json"   -d '{
     "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
     "messages": [
       {"role": "user", "content": "Hello! What model are you?"}
