@@ -2,6 +2,9 @@
 # 🏆 ViBench Benchmark Report: Kimi-K3 
 ## Date August 2, 2026
 
+KimiK3 scores near perfect in vibench.  This is close to any other model.  Vibe bench is perhaps one of the hardest Vibe coding benchmark used by [Replit](https://replit.com/)
+
+
 [ViBench](https://vibench.ai/) is an open-source benchmark for evaluating AI agents on end-to-end web application development. It measures the signal that matters most to a vibe coder: does the app do what was asked?
 
 Tasks are derived from real production traces and specified entirely through user-facing requirements, with no implementation constraints or reference patches. An adaptive automatic evaluator drives each generated application through a human-authored test plan using REPL-based browser automation, achieving high step-level agreement with human experts. Nine frontier models evaluated across 105 artifacts.
