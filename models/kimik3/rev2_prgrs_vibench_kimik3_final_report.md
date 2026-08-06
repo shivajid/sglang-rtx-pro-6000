@@ -22,7 +22,7 @@ Following our targeted re-runs using **regular reasoning trace** (unconstrained 
 
 ---
 
-## 📋 Full 24-Application Final Leaderboard
+##  Full 24-Application Final Leaderboard
 
 Below is the complete, updated score table across all 24 ViBench applications:
 
@@ -55,7 +55,7 @@ Below is the complete, updated score table across all 24 ViBench applications:
 
 ---
 
-## 🛠️ Summary of Re-Run Improvements
+## Summary of Re-Run Improvements
 
 1. **`family_social` (33.3% ➔ 100.0%)**:
    - OpenHands created clean SQL database schemas without hardcoding demo user accounts (`alice@example.com`, `carol@example.com`). This completely eliminated HTTP 409 signup collisions and allowed every relationship, post feed, and privacy rule test to pass 100%.
