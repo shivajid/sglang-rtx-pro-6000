@@ -10,7 +10,7 @@ Following our targeted re-runs using **regular reasoning trace** (unconstrained 
 
 ---
 
-## 📊 Executive Summary & Key Milestones
+## Executive Summary 
 
 | Metric | Initial Run (`reasoning_effort: low`) | Final Run (Regular Trace) | Improvement / Delta |
 | :--- | :---: | :---: | :---: |
