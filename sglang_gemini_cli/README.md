@@ -39,6 +39,8 @@ curl http://10.0.0.16:30000/v1/chat/completions   -H "Content-Type: application/
 
 ## Set Environment
 ```
+# Update the IP address and the model with your own values.
+
 export SGLANG_BASE_URL=http://10.0.0.16:30000/v1
 export GEMINI_MODEL="deepseek-ai/DeepSeek-V4-Flash-0731"
 export GEMINI_DEFAULT_AUTH_TYPE="sglang"
