@@ -1,4 +1,4 @@
-
+Below instructions on how to connect Gemini CLI to a model running on sglang. I have built and pushed a custom image of Gemini CLI, to be used as a Coding Harness. It works very well. I have tested with KimiK3 and DeepSeekv4-Flash-0731 model. FBelow are instructions on how to set it up and run it.
 
 
 ```
