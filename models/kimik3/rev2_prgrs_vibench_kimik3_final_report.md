@@ -1,6 +1,10 @@
-# 📅 Report Timestamp: Sunday, August 2, 2026 — 6:13 PM PDT `(2026-08-02T18:13:00-07:00)`
 
-# 🏆 Final ViBench Benchmark Report: Kimi-K3 (`cpu-pool-4`)
+# 🏆 ViBench Benchmark Report: Kimi-K3 
+## Date August 2, 2026
+
+[ViBench](https://vibench.ai/) is an open-source benchmark for evaluating AI agents on end-to-end web application development. It measures the signal that matters most to a vibe coder: does the app do what was asked?
+
+Tasks are derived from real production traces and specified entirely through user-facing requirements, with no implementation constraints or reference patches. An adaptive automatic evaluator drives each generated application through a human-authored test plan using REPL-based browser automation, achieving high step-level agreement with human experts. Nine frontier models evaluated across 105 artifacts.
 
 Following our targeted re-runs using **regular reasoning trace** (unconstrained reasoning effort) across all target applications (`wedding`, `srm`, `fleet_management`, `resume_builder`, `hvac`, `pilot_logbook`, `mafia`, `furniture_freight`, `family_friendly_venue`, `family_social`, `notes`, `book_journey`), we have achieved a historic overall benchmark result for **Kimi-K3** on GKE.
 
