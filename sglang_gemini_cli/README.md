@@ -1,6 +1,6 @@
-Below instructions on how to connect Gemini CLI to a model running on sglang. I have built and pushed a custom image of Gemini CLI, to be used as a Coding Harness. It works very well. I have tested with KimiK3 and DeepSeekv4-Flash-0731 model. FBelow are instructions on how to set it up and run it.
+Below instructions on how to connect Gemini CLI to a model running on sglang. I have built and pushed a custom image of Gemini CLI, to be used as a Coding Harness. It works very well. I have tested with KimiK3 and DeepSeekv4-Flash-0731 model. Below are instructions on how to set it up and run it from a Linux VM.
 
-
+## Install NPM
 ```
 ## Update package lists
 
@@ -17,7 +17,8 @@ sudo apt-get install -y nodejs
 node -v   # Should be v20.x or higher
 npm -v    # Should be 10.x or higher
 ```
-##Verify Model Access
+
+## Verify Model Access
 ```
 # Verify Model Access. In this example I have  IP Address 10.0.0.16 for the service/pod, replace with your IP.
 
