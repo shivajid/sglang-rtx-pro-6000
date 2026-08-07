@@ -1,0 +1,148 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sglang-glm52-nvfp4
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sglang-glm52-nvfp4
+  serviceName: "sglang-glm52-nvfp4-service"
+  template:
+    metadata:
+      labels:
+        app: sglang-glm52-nvfp4
+    spec:
+      hostNetwork: true
+      hostIPC: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        cloud.google.com/gke-nodepool: g4-384-np-1
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: sglang-container
+        image: lmsysorg/sglang:dev-cu13
+        imagePullPolicy: Always
+        securityContext:
+          privileged: true
+          capabilities:
+            add: ["IPC_LOCK", "SYS_PTRACE"]
+        command:
+        - python3
+        - -m
+        - sglang.launch_server
+        args:
+        - --model-path
+        - nvidia/GLM-5.2-NVFP4
+        - --reasoning-parser
+        - glm45
+        - --tool-call-parser
+        - glm47
+        - --tp-size
+        - "8"
+        - --trust-remote-code
+        - --dp-size
+        - "8"
+        - --enable-dp-attention
+        - --moe-a2a-backend
+        - none
+        - --ep-size
+        - "1"
+        - --moe-runner-backend
+        - flashinfer_cutlass
+        - --attention-backend
+        - flashinfer
+        - --kv-cache-dtype
+        - fp8_e4m3
+        - --disable-shared-experts-fusion
+        - --mem-fraction-static
+        - "0.85"
+        - --chunked-prefill-size
+        - "2048"
+        - --cuda-graph-bs
+        - "16"
+        - "32"
+        - "48"
+        - "64"
+        - --context-length
+        - "9472"
+        - --max-running-requests
+        - "1024"
+        - --host
+        - 0.0.0.0
+        - --port
+        - "8000"
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        - name: OMP_NUM_THREADS
+          value: "8"
+        - name: SGLANG_DISABLE_DSA_INDEXER_FUSION
+          value: "1"
+        - name: SGLANG_ENABLE_SPEC_V2
+          value: "True"
+        - name: NCCL_DEBUG
+          value: INFO
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0,eth1"
+        - name: NCCL_SOCKET_NTHREADS
+          value: "8"
+        - name: NCCL_NSOCKS_PERTHREAD
+          value: "8"
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: NCCL_P2P_LEVEL
+          value: "SYS"
+        - name: NCCL_MIN_NCHANNELS
+          value: "8"
+        - name: NCCL_ALLOC_P2P_NET_LL_BUFFERS
+          value: "1"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "0"
+        - name: SAFETENSORS_FAST_GPU
+          value: "0"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: FLASHINFER_DISABLE_VERSION_CHECK
+          value: "1"
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /root/.cache/huggingface
+          name: hf-cache
+        - mountPath: /root/.cache/flashinfer
+          name: flashinfer-cache
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 256Gi
+      - name: hf-cache
+        emptyDir: {}
+      - name: flashinfer-cache
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-serving-glm52-nvfp4
+spec:
+  type: NodePort
+  selector:
+    app: sglang-glm52-nvfp4
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: serving
+    port: 30000
+    targetPort: 30000
