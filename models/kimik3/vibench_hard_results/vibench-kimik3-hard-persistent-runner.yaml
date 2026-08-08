@@ -1,0 +1,200 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vibench-kimik3-data-pvc
+  namespace: shivajid
+  labels:
+    app: vibench-kimik3-hard-runner
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard-rwo
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vibench-kimik3-hard-persistent-runner
+  namespace: shivajid
+  labels:
+    app: vibench-kimik3-hard-persistent-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vibench-kimik3-hard-persistent-runner
+  template:
+    metadata:
+      labels:
+        app: vibench-kimik3-hard-persistent-runner
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: cpu-pool-4
+      containers:
+      - name: runner
+        image: europe-west4-docker.pkg.dev/northam-ce-mlai-tpu/sglang-repo/vibench-runner:latest
+        imagePullPolicy: Always
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: persistent-storage
+          mountPath: /persistent-data
+        - name: env-creator-mount
+          mountPath: /workspace/_harness/runner/scripts/env_creator.py
+          subPath: env_creator.py
+        - name: populate-script-mount
+          mountPath: /workspace/scripts/populate_results_folder.py
+          subPath: populate_results_folder.py
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          set -e
+          echo "============================================================"
+          echo "Starting ViBench Hard Persistent & Resumable Runner..."
+          echo "============================================================"
+          touch /workspace/copy_finished
+
+          # Wait for Docker daemon sidecar
+          echo "Waiting for Docker daemon..."
+          until docker info >/dev/null 2>&1; do
+            sleep 1
+          done
+          echo "✓ Docker daemon is ready!"
+
+          # Set up persistent storage and workspace directories
+          mkdir -p /persistent-data/results /persistent-data/logs /workspace/results /workspace/logs
+
+          # Initialize reference implementations on persistent disk if first boot
+          echo "Syncing reference implementation baselines (RI_MVP) to persistent storage..."
+          cp -rn /workspace/results/* /persistent-data/results/ 2>/dev/null || true
+
+          # Mount persistent results and logs using bind mounts to preserve relative paths (../../../../)
+          mount --bind /persistent-data/results /workspace/results
+          mount --bind /persistent-data/logs /workspace/logs
+          echo "✓ Persistent storage bind-mounted to /workspace/results and /workspace/logs"
+
+          # Dynamically resolve live service ClusterIP
+          SERVICE_IP=$(getent hosts shivajid-sglang-kimi-k3-svc.shivajid | awk '{print $1}' || echo "10.0.38.24")
+          export KIMI_K3_GKE_ENDPOINT="http://${SERVICE_IP}:30100/v1"
+          echo "Using live Kimi-K3 SGLang endpoint: ${KIMI_K3_GKE_ENDPOINT}"
+
+          echo "============================================================"
+          echo "Testing connection to shivajid-sglang-kimi-k3 server..."
+          echo "============================================================"
+          until curl -s ${KIMI_K3_GKE_ENDPOINT}/models >/dev/null 2>&1; do
+            echo "Waiting for shivajid-sglang-kimi-k3 server at ${KIMI_K3_GKE_ENDPOINT}..."
+            sleep 5
+          done
+          echo "✓ Kimi-K3 server is reachable at ${KIMI_K3_GKE_ENDPOINT}!"
+
+          echo "============================================================"
+          echo "Populating / Updating ViBench results folder structure..."
+          echo "============================================================"
+          python3 scripts/populate_results_folder.py
+
+          MODEL="kimi_k3_gke"
+
+          echo "============================================================"
+          echo "Checking already completed builds for auto-resumption..."
+          echo "============================================================"
+          CURATED_RUNS=(
+            "collabrative_kaban/$MODEL/feature3"
+            "family_friendly_venue/$MODEL/feature1"
+            "family_social/$MODEL/feature1"
+            "furniture_freight/$MODEL/feature1"
+            "furniture_freight/$MODEL/feature2"
+            "furniture_freight/$MODEL/feature3"
+            "hvac/$MODEL/feature1"
+            "hvac/$MODEL/feature2"
+            "hvac/$MODEL/feature3"
+            "language_learning/$MODEL/feature1"
+            "language_learning/$MODEL/feature2"
+            "logistics/$MODEL/feature1"
+            "market_place/$MODEL/feature1"
+            "market_place/$MODEL/feature4"
+            "monopoly/$MODEL/feature2"
+            "notes/$MODEL/feature3"
+            "online_whiteboard/$MODEL/feature1"
+            "pilot_logbook/$MODEL/feature1"
+            "pilot_logbook/$MODEL/feature2"
+            "pilot_logbook/$MODEL/feature3"
+            "resume_builder/$MODEL/feature3"
+            "slack/$MODEL/feature1"
+            "slack/$MODEL/feature3"
+            "srm/$MODEL/feature1"
+            "srm/$MODEL/feature2"
+            "srm/$MODEL/feature3"
+          )
+
+          # Filter only runs that have NOT finished building
+          RUNS_TO_BUILD=()
+          for run in "${CURATED_RUNS[@]}"; do
+            APP_DIR="/workspace/results/${run}/output/app"
+            if [ -d "$APP_DIR" ] && [ "$(ls -A "$APP_DIR" 2>/dev/null)" ]; then
+              echo "  [SKIP BUILD] Already built: ${run}"
+            else
+              echo "  [QUEUE BUILD] Needs building: ${run}"
+              RUNS_TO_BUILD+=("$run")
+            fi
+          done
+
+          if [ ${#RUNS_TO_BUILD[@]} -gt 0 ]; then
+            echo "============================================================"
+            echo "Running Phase 1: Building ${#RUNS_TO_BUILD[@]} pending features in parallel..."
+            echo "============================================================"
+            python3 scripts/run_all_builds.py --parallel 4 --yes --runs "${RUNS_TO_BUILD[@]}" || true
+          else
+            echo "============================================================"
+            echo "All 26 features are already built! Skipping Phase 1."
+            echo "============================================================"
+          fi
+
+          # Step B: Seed the databases in parallel
+          echo "============================================================"
+          echo "Running Phase 2: Seeding databases in parallel..."
+          echo "============================================================"
+          python3 scripts/run_all_seeding.py --models "$MODEL" --parallel 4 --yes || true
+
+          # Step C: Run Playwright evaluation tests in parallel
+          echo "============================================================"
+          echo "Running Phase 3: Playwright Evaluation testing in parallel..."
+          echo "============================================================"
+          python3 scripts/run_all_evaluate.py --models "$MODEL" --parallel 4 --yes || true
+
+          echo "============================================================"
+          echo "Compiling final analysis scorecard..."
+          echo "============================================================"
+          python3 scripts/analyze_results.py --models kimi_k3_gke
+
+          echo "============================================================"
+          echo "ViBench Hard pipeline complete! Results saved to PVC."
+          echo "============================================================"
+          sleep infinity
+        env:
+        - name: DOCKER_HOST
+          value: tcp://localhost:2375
+        - name: KIMI_K3_GKE_ENDPOINT
+          value: "http://shivajid-sglang-kimi-k3-svc.shivajid:30100/v1"
+        - name: KIMI_K3_MODEL_NAME
+          value: "openai/moonshotai/Kimi-K3"
+      - name: dind
+        image: docker:dind
+        securityContext:
+          privileged: true
+        env:
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+      volumes:
+      - name: persistent-storage
+        persistentVolumeClaim:
+          claimName: vibench-kimik3-data-pvc
+      - name: env-creator-mount
+        configMap:
+          name: vibench-env-creator
+      - name: populate-script-mount
+        configMap:
+          name: vibench-populate-results
