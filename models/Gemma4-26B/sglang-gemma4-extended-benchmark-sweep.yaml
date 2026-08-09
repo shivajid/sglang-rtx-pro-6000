@@ -1,0 +1,180 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sglang-gemma4-extended-benchmark-runner
+  namespace: default
+  labels:
+    app: sglang-gemma4-extended-benchmark-runner
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: cpu-bench-pool
+  restartPolicy: Never
+  volumes:
+  - name: results-vol
+    emptyDir: {}
+  containers:
+  - name: benchmark-runner
+    image: docker.io/lmsysorg/sglang:v0.5.10.post1
+    env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-secret
+          key: HF_TOKEN
+    - name: PYTHONUNBUFFERED
+      value: "1"
+    volumeMounts:
+    - name: results-vol
+      mountPath: /results
+    command:
+    - /bin/bash
+    - -c
+    args:
+    - |
+      set -e
+      API_URL="http://vllm-gemma4-service:8000"
+      MODEL_NAME="google/gemma-4-26B-A4B"
+      BASE_OUTPUT_DIR="/results"
+      CONCURRENCIES=(32 64 128 256 512 1024)
+
+      # Workloads definition: (ID, INPUT_LEN, OUTPUT_LEN, NAME)
+      WORKLOADS=(
+        "1k_8k:1024:8192:Pattern 1: 1K Input / 8K Output (Reasoning & Generation Heavy)"
+        "1k_1k:1024:1024:Pattern 2: 1K Input / 1K Output (Balanced Standard)"
+        "1k_512:1024:512:Pattern 3: 1K Input / 512 Output (Fast Chat / Low Latency)"
+      )
+
+      echo "=========================================================================================="
+      echo "🚀 Starting Extended SGLang Benchmark Sweep for Gemma-4-26B-A4B"
+      echo "Endpoint      : ${API_URL}"
+      echo "Model         : ${MODEL_NAME}"
+      echo "Concurrencies : ${CONCURRENCIES[*]}"
+      echo "Workloads     : 1K/8K, 1K/1K, 1K/512"
+      echo "=========================================================================================="
+
+      for w in "${WORKLOADS[@]}"; do
+          IFS=":" read -r W_ID W_IN W_OUT W_NAME <<< "${w}"
+          W_DIR="${BASE_OUTPUT_DIR}/${W_ID}"
+          mkdir -p "${W_DIR}"
+
+          echo ""
+          echo "=========================================================================================="
+          echo "📌 RUNNING WORKLOAD: ${W_NAME}"
+          echo "   Input: ${W_IN} tokens | Output: ${W_OUT} tokens"
+          echo "=========================================================================================="
+
+          for c in "${CONCURRENCIES[@]}"; do
+              # Ensure enough prompts to reach steady state
+              NUM_PROMPTS=$((c * 2))
+              RESULT_FILE="${W_DIR}/result_${W_ID}_c${c}.json"
+
+              echo ""
+              echo "------------------------------------------------------------------------------------------"
+              echo "▶️  [${W_ID} | Concurrency ${c}] Running sglang.bench_serving with ${NUM_PROMPTS} prompts..."
+              echo "------------------------------------------------------------------------------------------"
+
+              python3 -m sglang.bench_serving \
+                  --backend vllm \
+                  --base-url "${API_URL}" \
+                  --model "${MODEL_NAME}" \
+                  --dataset-name random \
+                  --random-input-len "${W_IN}" \
+                  --random-output-len "${W_OUT}" \
+                  --num-prompts "${NUM_PROMPTS}" \
+                  --max-concurrency "${c}" \
+                  --output-file "${RESULT_FILE}" \
+                  --apply-chat-template \
+                  --seed 42 \
+                  --request-rate inf || echo "⚠️  [${W_ID} | C=${c}] Encountered error, continuing..."
+
+              sleep 3
+          done
+      done
+
+      echo ""
+      echo "=========================================================================================="
+      echo "📊 GENERATING EXTENDED MULTI-WORKLOAD BENCHMARK REPORT"
+      echo "=========================================================================================="
+
+      python3 - << 'EOF'
+      import os
+      import json
+
+      base_dir = "/results"
+      model_name = "google/gemma-4-26B-A4B"
+      concurrencies = [32, 64, 128, 256, 512, 1024]
+      workloads = [
+          ("1k_8k", "1K Input / 8K Output (Reasoning Heavy)", 1024, 8192),
+          ("1k_1k", "1K Input / 1K Output (Balanced Standard)", 1024, 1024),
+          ("1k_512", "1K Input / 512 Output (Fast Chat)", 1024, 512),
+      ]
+
+      report_lines = [
+          f"# Extended Benchmark Performance Report: `{model_name}`",
+          "",
+          f"Comprehensive `sglang.bench_serving` performance sweep across concurrency levels **32 to 1024** for **{model_name}** on single-node single-GPU Blackwell G4.",
+          "",
+          "---",
+      ]
+
+      for w_id, w_name, w_in, w_out in workloads:
+          w_dir = os.path.join(base_dir, w_id)
+          results = []
+          for c in concurrencies:
+              p = os.path.join(w_dir, f"result_{w_id}_c{c}.json")
+              if os.path.exists(p):
+                  try:
+                      with open(p) as f:
+                          d = json.load(f)
+                          d["target_concurrency"] = c
+                          results.append(d)
+                  except Exception as e:
+                      print(f"Error reading {p}: {e}")
+
+          report_lines.append(f"## 📊 Workload: {w_name}")
+          report_lines.append(f"- **Input Length**: {w_in} tokens | **Max Output Length**: {w_out} tokens\n")
+          report_lines.append("| Concurrency | Completed Req | Output Tok/s | Input Tok/s | Total Tok/s | Req/s | Median TTFT (ms) | P99 TTFT (ms) | Median TPOT (ms) | P99 TPOT (ms) | Median ITL (ms) | Median Latency (s) | P99 Latency (s) |")
+          report_lines.append("| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
+
+          for r in results:
+              c = r.get("target_concurrency", r.get("max_concurrency", "N/A"))
+              num_req = r.get("completed", r.get("num_prompts", "N/A"))
+              out_tps = r.get("output_throughput", 0.0)
+              in_tps = r.get("input_throughput", 0.0)
+              tot_tps = r.get("total_throughput", 0.0)
+              req_tps = r.get("request_throughput", 0.0)
+
+              med_ttft = r.get("median_ttft_ms", 0.0)
+              p99_ttft = r.get("p99_ttft_ms", 0.0)
+              med_tpot = r.get("median_tpot_ms", 0.0)
+              p99_tpot = r.get("p99_tpot_ms", 0.0)
+              med_itl = r.get("median_itl_ms", 0.0)
+              med_lat = r.get("median_e2e_latency_ms", 0.0) / 1000.0
+              p99_lat = r.get("p99_e2e_latency_ms", 0.0) / 1000.0
+
+              report_lines.append(
+                  f"| **{c}** | {num_req} | **{out_tps:.2f}** | {in_tps:.2f} | {tot_tps:.2f} | {req_tps:.2f} | "
+                  f"{med_ttft:.2f} | {p99_ttft:.2f} | {med_tpot:.2f} | {p99_tpot:.2f} | {med_itl:.2f} | {med_lat:.2f} | {p99_lat:.2f} |"
+              )
+          report_lines.append("\n---\n")
+
+      report_content = "\n".join(report_lines)
+      print("\n" + report_content + "\n")
+
+      out_file = os.path.join(base_dir, "sglang_extended_benchmark_report.md")
+      with open(out_file, "w") as f:
+          f.write(report_content)
+      print(f"📄 Saved extended markdown report to: {out_file}")
+      EOF
+
+      echo "=========================================================================================="
+      echo "🏆 All Extended Benchmark Sweeps Complete! Sleeping to preserve results..."
+      echo "=========================================================================================="
+      sleep infinity
+    resources:
+      requests:
+        cpu: "8"
+        memory: "16Gi"
+      limits:
+        cpu: "32"
+        memory: "64Gi"

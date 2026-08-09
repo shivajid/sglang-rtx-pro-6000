@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sglang-gemma4-benchmark-runner
+  namespace: default
+  labels:
+    app: sglang-gemma4-benchmark-runner
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: cpu-bench-pool
+  restartPolicy: Never
+  volumes:
+  - name: results-vol
+    emptyDir: {}
+  containers:
+  - name: benchmark-runner
+    image: docker.io/lmsysorg/sglang:v0.5.10.post1
+    env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-secret
+          key: HF_TOKEN
+    - name: PYTHONUNBUFFERED
+      value: "1"
+    volumeMounts:
+    - name: results-vol
+      mountPath: /results
+    command:
+    - /bin/bash
+    - -c
+    args:
+    - |
+      set -e
+      API_URL="http://vllm-gemma4-service:8000"
+      MODEL_NAME="google/gemma-4-26B-A4B"
+      OUTPUT_DIR="/results"
+      INPUT_LEN=8192
+      OUTPUT_LEN=1024
+      CONCURRENCIES=(32 64 128 256 512 1024)
+
+      mkdir -p "${OUTPUT_DIR}"
+
+      echo "=========================================================================================="
+      echo "🚀 Starting SGLang bench_serving Concurrency Sweep for Gemma-4-26B-A4B (8K/1K)"
+      echo "Endpoint      : ${API_URL}"
+      echo "Model         : ${MODEL_NAME}"
+      echo "Input Length  : ${INPUT_LEN} tokens"
+      echo "Output Length : ${OUTPUT_LEN} tokens"
+      echo "Concurrencies : ${CONCURRENCIES[*]}"
+      echo "=========================================================================================="
+
+      for c in "${CONCURRENCIES[@]}"; do
+          NUM_PROMPTS=$((c * 2))
+          RESULT_FILE="${OUTPUT_DIR}/result_8k_1k_c${c}.json"
+          
+          echo ""
+          echo "------------------------------------------------------------------------------------------"
+          echo "▶️  [Concurrency ${c}] Running sglang.bench_serving with ${NUM_PROMPTS} prompts..."
+          echo "------------------------------------------------------------------------------------------"
+
+          python3 -m sglang.bench_serving \
+              --backend vllm \
+              --base-url "${API_URL}" \
+              --model "${MODEL_NAME}" \
+              --dataset-name random \
+              --random-input-len "${INPUT_LEN}" \
+              --random-output-len "${OUTPUT_LEN}" \
+              --num-prompts "${NUM_PROMPTS}" \
+              --max-concurrency "${c}" \
+              --output-file "${RESULT_FILE}" \
+              --apply-chat-template \
+              --seed 42 \
+              --request-rate inf || echo "⚠️  Concurrency ${c} encountered an error, proceeding..."
+
+          sleep 3
+      done
+
+      echo ""
+      echo "=========================================================================================="
+      echo "📊 GENERATING SUMMARY TABLE FROM SGLANG BENCHMARK RUNS"
+      echo "=========================================================================================="
+
+      python3 - << 'EOF'
+      import os
+      import json
+
+      output_dir = "/results"
+      model_name = "google/gemma-4-26B-A4B"
+      concurrencies = [32, 64, 128, 256, 512, 1024]
+
+      results = []
+      for c in concurrencies:
+          filepath = os.path.join(output_dir, f"result_8k_1k_c{c}.json")
+          if os.path.exists(filepath):
+              try:
+                  with open(filepath, 'r') as f:
+                      data = json.load(f)
+                      data["target_concurrency"] = c
+                      results.append(data)
+              except Exception as e:
+                  print(f"Could not read {filepath}: {e}")
+
+      if not results:
+          print("No benchmark result files found.")
+          exit(0)
+
+      report_lines = [
+          f"# SGLang `bench_serving` Performance Sweep: `{model_name}` (8K/1K)",
+          "",
+          "| Concurrency | Completed Req | Output Tok/s | Total Tok/s | Req/s | Mean TTFT (ms) | P90 TTFT (ms) | P99 TTFT (ms) | Mean TPOT (ms) | Mean Latency (s) |",
+          "| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |"
+      ]
+
+      for r in results:
+          c = r.get("target_concurrency", r.get("max_concurrency", "N/A"))
+          num_req = r.get("completed", r.get("num_prompts", "N/A"))
+          out_tps = r.get("output_throughput", 0.0)
+          total_tps = r.get("total_throughput", 0.0)
+          req_tps = r.get("request_throughput", 0.0)
+          
+          mean_ttft = r.get("mean_ttft_ms", 0.0)
+          p90_ttft = r.get("p90_ttft_ms", 0.0)
+          p99_ttft = r.get("p99_ttft_ms", 0.0)
+          mean_tpot = r.get("mean_tpot_ms", 0.0)
+          mean_lat = r.get("mean_e2e_latency_s", 0.0)
+          
+          report_lines.append(
+              f"| **{c}** | {num_req} | **{out_tps:.2f}** | {total_tps:.2f} | {req_tps:.2f} | "
+              f"{mean_ttft:.1f} | {p90_ttft:.1f} | {p99_ttft:.1f} | {mean_tpot:.2f} | {mean_lat:.2f} |"
+          )
+
+      report_content = "\n".join(report_lines)
+      print("\n" + report_content + "\n")
+
+      report_path = os.path.join(output_dir, "sglang_benchmark_sweep_8k_1k_report.md")
+      with open(report_path, "w") as f:
+          f.write(report_content)
+      print(f"📄 Saved markdown report to: {report_path}")
+      EOF
+
+      echo "=========================================================================================="
+      echo "🏆 SGLang Benchmark Sweep Complete! Sleeping so you can inspect results..."
+      echo "=========================================================================================="
+      sleep infinity
+    resources:
+      requests:
+        cpu: "8"
+        memory: "16Gi"
+      limits:
+        cpu: "32"
+        memory: "64Gi"
