@@ -52,8 +52,11 @@ curl http://10.0.0.16:30000/v1/chat/completions   -H "Content-Type: application/
 ```
 # Update the IP address and the model with your own values.
 
-export SGLANG_BASE_URL=http://10.0.0.16:30000/v1
+export SGLANG_BASE_URL=http://<ip>:30000/v1
+
+# Model name from output of curl http://10.0.0.16:30000/v1/models comman. I am using deepseek as an example.
 export GEMINI_MODEL="deepseek-ai/DeepSeek-V4-Flash-0731"
+# Any string
 export GEMINI_DEFAULT_AUTH_TYPE="sglang"
 ```
 
