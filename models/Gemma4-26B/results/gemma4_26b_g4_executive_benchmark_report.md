@@ -1,3 +1,6 @@
+# IGNORE THIS REPORT
+
+
 # Executive Decision Memo: Gemma 4 26B Serving Viability on Google Cloud G4 (NVIDIA RTX PRO 6000 Blackwell)
 
 **Prepared for**: Executive Decision Makers & Infrastructure Leadership  
