@@ -22,6 +22,14 @@ npm -v    # Should be 10.x or higher
 ```
 # Verify Model Access. In this example I have  IP Address 10.0.0.16 for the service/pod, replace with your IP.
 
+If your server is running on GKE.
+Step 1: 
+gcloud container clusters get-credentials <cluster_name> --zone <zone> --project <project_id> --dns-endpoint
+Step 2: Port forward and use local host to connect. E.g.
+
+kubectl port-forward pod/<pod_name> 30000:30100 
+
+
 # List the model
 curl http://10.0.0.16:30000/v1/models 
 
@@ -35,7 +43,9 @@ curl http://10.0.0.16:30000/v1/chat/completions   -H "Content-Type: application/
     "max_tokens": 128,
     "temperature": 0.6
   }
- 
+
+
+
 ```
 
 ## Set Environment
