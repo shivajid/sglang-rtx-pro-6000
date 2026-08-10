@@ -103,13 +103,13 @@ spec:
                   print(f"Error reading {p}: {e}")
 
       report_lines = [
-          f"# SGLang Benchmark Report: `{model_name}` (10K Input / 500 Output)",
+          f"# SGLang Benchmark Report: `{model_name}` (10K Input / 500 Output - 2x GPU TP=2)",
           "",
-          f"Performance sweep across concurrency levels **32 to 512** for **{model_name}** served on single-node single-GPU (Blackwell G4).",
+          f"Performance sweep across concurrency levels **32 to 512** for **{model_name}** served on **2x NVIDIA RTX PRO 6000 Blackwell GPUs (TP=2, FP8)**.",
           "",
           "- **Input Length**: 10,240 tokens (10K)",
           "- **Max Output Length**: 500 tokens",
-          "- **Backend**: vLLM OpenAI API Server",
+          "- **Backend**: vLLM OpenAI API Server (TP=2)",
           "- **Client**: `sglang.bench_serving` on `cpu-bench-pool`",
           "",
           "---",
