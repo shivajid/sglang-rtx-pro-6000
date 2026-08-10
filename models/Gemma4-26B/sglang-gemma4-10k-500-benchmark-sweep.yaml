@@ -1,0 +1,165 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sglang-gemma4-10k-500-benchmark-runner
+  namespace: default
+  labels:
+    app: sglang-gemma4-10k-500-benchmark-runner
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: cpu-bench-pool
+  restartPolicy: Never
+  volumes:
+  - name: results-vol
+    emptyDir: {}
+  containers:
+  - name: benchmark-runner
+    image: docker.io/lmsysorg/sglang:v0.5.10.post1
+    env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-secret
+          key: HF_TOKEN
+    - name: PYTHONUNBUFFERED
+      value: "1"
+    volumeMounts:
+    - name: results-vol
+      mountPath: /results
+    command:
+    - /bin/bash
+    - -c
+    args:
+    - |
+      set -e
+      API_URL="http://vllm-gemma4-service:8000"
+      MODEL_NAME="google/gemma-4-26B-A4B"
+      OUTPUT_DIR="/results/10k_500"
+      INPUT_LEN=10240
+      OUTPUT_LEN=500
+      CONCURRENCIES=(32 64 128 256 512)
+
+      mkdir -p "${OUTPUT_DIR}"
+
+      echo "=========================================================================================="
+      echo "🚀 Starting SGLang Benchmark Sweep: 10K Input / 500 Output for Gemma-4-26B-A4B"
+      echo "Endpoint      : ${API_URL}"
+      echo "Model         : ${MODEL_NAME}"
+      echo "Input Length  : ${INPUT_LEN} tokens (10K)"
+      echo "Output Length : ${OUTPUT_LEN} tokens"
+      echo "Concurrencies : ${CONCURRENCIES[*]}"
+      echo "Output Dir    : ${OUTPUT_DIR}"
+      echo "=========================================================================================="
+
+      for c in "${CONCURRENCIES[@]}"; do
+          NUM_PROMPTS=$((c * 2))
+          RESULT_FILE="${OUTPUT_DIR}/result_10k_500_c${c}.json"
+
+          echo ""
+          echo "------------------------------------------------------------------------------------------"
+          echo "▶️  [Concurrency ${c}] Running sglang.bench_serving with ${NUM_PROMPTS} prompts..."
+          echo "------------------------------------------------------------------------------------------"
+
+          python3 -m sglang.bench_serving \
+              --backend vllm \
+              --base-url "${API_URL}" \
+              --model "${MODEL_NAME}" \
+              --dataset-name random \
+              --random-input-len "${INPUT_LEN}" \
+              --random-output-len "${OUTPUT_LEN}" \
+              --num-prompts "${NUM_PROMPTS}" \
+              --max-concurrency "${c}" \
+              --output-file "${RESULT_FILE}" \
+              --apply-chat-template \
+              --seed 42 \
+              --request-rate inf || echo "⚠️  [C=${c}] Benchmark command encountered error, continuing..."
+
+          sleep 3
+      done
+
+      echo ""
+      echo "=========================================================================================="
+      echo "📊 GENERATING BENCHMARK REPORT (10K / 500)"
+      echo "=========================================================================================="
+
+      python3 - << 'EOF'
+      import os
+      import json
+
+      output_dir = "/results/10k_500"
+      model_name = "google/gemma-4-26B-A4B"
+      concurrencies = [32, 64, 128, 256, 512]
+
+      results = []
+      for c in concurrencies:
+          p = os.path.join(output_dir, f"result_10k_500_c{c}.json")
+          if os.path.exists(p):
+              try:
+                  with open(p) as f:
+                      d = json.load(f)
+                      d["target_concurrency"] = c
+                      results.append(d)
+              except Exception as e:
+                  print(f"Error reading {p}: {e}")
+
+      report_lines = [
+          f"# SGLang Benchmark Report: `{model_name}` (10K Input / 500 Output)",
+          "",
+          f"Performance sweep across concurrency levels **32 to 512** for **{model_name}** served on single-node single-GPU (Blackwell G4).",
+          "",
+          "- **Input Length**: 10,240 tokens (10K)",
+          "- **Max Output Length**: 500 tokens",
+          "- **Backend**: vLLM OpenAI API Server",
+          "- **Client**: `sglang.bench_serving` on `cpu-bench-pool`",
+          "",
+          "---",
+          "",
+          "## 📊 Concurrency Sweep Summary (Median & P99 Metrics)",
+          "",
+          "| Concurrency | Completed Req | Output Tok/s | Input Tok/s | Total Tok/s | Req/s | Median TTFT (ms) | P99 TTFT (ms) | Median TPOT (ms) | P99 TPOT (ms) | Median ITL (ms) | Median Latency (s) | P99 Latency (s) |",
+          "| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
+      ]
+
+      for r in results:
+          c = r.get("target_concurrency", r.get("max_concurrency", "N/A"))
+          num_req = r.get("completed", r.get("num_prompts", "N/A"))
+          out_tps = r.get("output_throughput", 0.0)
+          in_tps = r.get("input_throughput", 0.0)
+          tot_tps = r.get("total_throughput", 0.0)
+          req_tps = r.get("request_throughput", 0.0)
+
+          med_ttft = r.get("median_ttft_ms", 0.0)
+          p99_ttft = r.get("p99_ttft_ms", 0.0)
+          med_tpot = r.get("median_tpot_ms", 0.0)
+          p99_tpot = r.get("p99_tpot_ms", 0.0)
+          med_itl = r.get("median_itl_ms", 0.0)
+          med_lat = r.get("median_e2e_latency_ms", 0.0) / 1000.0
+          p99_lat = r.get("p99_e2e_latency_ms", 0.0) / 1000.0
+
+          report_lines.append(
+              f"| **{c}** | {num_req} | **{out_tps:.2f}** | {in_tps:.2f} | {tot_tps:.2f} | {req_tps:.2f} | "
+              f"**{med_ttft:.2f}** | {p99_ttft:.2f} | **{med_tpot:.2f}** | {p99_tpot:.2f} | **{med_itl:.2f}** | **{med_lat:.2f}** | {p99_lat:.2f} |"
+          )
+
+      report_lines.append("\n---\n")
+
+      report_content = "\n".join(report_lines)
+      print("\n" + report_content + "\n")
+
+      out_file = os.path.join(output_dir, "sglang_benchmark_10k_500_report.md")
+      with open(out_file, "w") as f:
+          f.write(report_content)
+      print(f"📄 Saved report to: {out_file}")
+      EOF
+
+      echo "=========================================================================================="
+      echo "🏆 10K/500 Benchmark Sweep Complete! Sleeping to preserve results..."
+      echo "=========================================================================================="
+      sleep infinity
+    resources:
+      requests:
+        cpu: "8"
+        memory: "16Gi"
+      limits:
+        cpu: "32"
+        memory: "64Gi"
