@@ -18,26 +18,29 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 ## Performance Benchmarks (Latest)
 
-| Model | Quantization | Setup | Output Throughput (tok/s) | Total Throughput (tok/s) | Peak Throughput (tok/s) | TPOT (ms) |
-|-------|--------------|-------|---------------------------|--------------------------|-------------------------|-----------|
-| [nvidia/Kimi-K2.6-NVFP4](./models/KimiK2.6/nvfp4/results/benchmark-results.md) | NVFP4 | 2 Nodes (16x RTX 6000) | 3261.28 | 3662.79 | 4725.00 | 138.54 |
-| [deepseek-ai/DeepSeek-V4-Flash-0731](./models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md)*** | MXFP4 | 2 Nodes (16x RTX 6000) | 1606.27 | — | 4710.94 | 107.64 |
-| [moonshotai/Kimi-K3](./models/kimik3/results/benchamrk_sweep_report.md) | BF16 | 4 Nodes (16x GB200) | 1666.54 | 1874.86 | — | 24.88 |
-| [zai-org/GLM-5.2-FP8](./models/GLM5.2/fp8/results/benchmark_results.yaml) | FP8 | 2 Nodes (16x RTX 6000) | 1645.21 | 1855.07 | 2608.00 | 240.43 |
-| [moonshotai/Kimi-K2.6](./models/KimiK2.6/results/benchmark_results.md) (wip)| INT4* | 1 Node (8x RTX 6000) (not optimized) | 1459.26 | 1637.28 | 850.00 | 82.43 |
-| [nvidia/Kimi-K2.5-NVFP4](./models/KimiK2.5/nvfp4/results/benchmarks_2node.yaml) | NVFP4 | 2 Nodes (16x RTX 6000) | 3237.46 | 3632.39 | 5535.00 | 137.89 |
-| [moonshotai/Kimi-K2.5](./models/KimiK2.5/results/benchmark_results.md) | INT4* | 2 Nodes (16x RTX 6000) | 3152.79 | 3537.39 | 4793.00 | 136.52 |
-| [lukealonso/GLM-5.1-NVFP4](./models/GLM5.1/nvfp4/results/benchmark_results_2node.md) | NVFP4 | 2 Nodes (16x RTX 6000) | 3075.85 | 3451.06 | 4606.00 | 141.36 |
-| [lukealonso/GLM-5.1-NVFP4](./models/GLM5.1/nvfp4/results/benchmark_results_1node.md) | NVFP4 | 1 Node (8x RTX 6000) | 1490.31 | 1672.11 | 734.00 | 73.82 |
-| [zai-org/GLM-5.1-FP8](./models/GLM5.1/results/benchmark-results.md) | FP8 | 2 Nodes (16x RTX 6000) | 2785.55 | 3125.35 | 4092.00 | 155.26 |
-| [nvidia/DeepSeek-V3.2-NVFP4](./models/DeepSeekv3-2/nvp4/results/benchmark_results.md) | NVFP4 | 1 Node (8x RTX 6000) | 2675.33 | 3012.42 | 2046.00 | 106.03 |
-| [deepseek-ai/DeepSeek-V3.2](./models/DeepSeekv3-2/fp8/results/benchmark_results.md) | FP8 | 2 Nodes (16x RTX 6000) | 2962.79 | 3324.21 | 4951.00 | 149.29 |
-| [Qwen/Qwen3.5-397B-A17B-FP8](./models/Qwen3.5-397B-A17B-FP8/results/hicache/benchmark_results.md) | FP8 | 1 Node (8x RTX 6000) | 390.65 | 8202.16 | 1120.00 | 100.59 |
-| [datalab-to/chandra-ocr-2](./models/datalab2-ocr/benchmark_results.md)** | BF16| 1 Node (1x RTX 6000)| 2600.67 | 5267.08 | 4603.00| 32.47 |
+*Rows are ordered by benchmark date, newest first.*
+
+| Model | Benchmarked | Quantization | Setup | Output Throughput (tok/s) | Total Throughput (tok/s) | Peak Throughput (tok/s) | TPOT (ms) |
+|-------|-------------|--------------|-------|---------------------------|--------------------------|-------------------------|-----------|
+| [google/gemma-4-26B-A4B](./models/Gemma4-26B/results/master_benchmark_summary.md)**** | 2026-08-09 | FP8 | 1 Node (1x RTX 6000, vLLM) | 3623.30 | 4094.73 | 4054.82 | 61.75 |
+| [deepseek-ai/DeepSeek-V4-Flash-0731](./models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md)*** | 2026-08-05 | MXFP4 | 2 Nodes (16x RTX 6000) | 1606.27 | — | 4710.94 | 107.64 |
+| [moonshotai/Kimi-K3](./models/kimik3/results/benchamrk_sweep_report.md) | 2026-08-04 | BF16 | 4 Nodes (16x GB200) | 1666.54 | 1874.86 | — | 24.88 |
+| [zai-org/GLM-5.2-FP8](./models/GLM5.2/fp8/results/benchmark_results.yaml) | 2026-07-08 | FP8 | 2 Nodes (16x RTX 6000) | 1645.21 | 1855.07 | 2608.00 | 240.43 |
+| [nvidia/Kimi-K2.6-NVFP4](./models/KimiK2.6/nvfp4/results/benchmark-results.md) | 2026-06-11 | NVFP4 | 2 Nodes (16x RTX 6000) | 3261.28 | 3662.79 | 4725.00 | 138.54 |
+| [moonshotai/Kimi-K2.5](./models/KimiK2.5/results/benchmark_results.md) | 2026-06-10 | INT4* | 2 Nodes (16x RTX 6000) | 3152.79 | 3537.39 | 4793.00 | 136.52 |
+| [Qwen/Qwen3.5-397B-A17B-FP8](./models/Qwen3.5-397B-A17B-FP8/results/hicache/benchmark_results.md) | 2026-05-22 | FP8 | 1 Node (8x RTX 6000) | 390.65 | 8202.16 | 1120.00 | 100.59 |
+| [moonshotai/Kimi-K2.6](./models/KimiK2.6/results/benchmark_results.md) (wip)| 2026-05-15 | INT4* | 1 Node (8x RTX 6000) (not optimized) | 1459.26 | 1637.28 | 850.00 | 82.43 |
+| [nvidia/Kimi-K2.5-NVFP4](./models/KimiK2.5/nvfp4/results/benchmarks_2node.yaml) | 2026-05-05 | NVFP4 | 2 Nodes (16x RTX 6000) | 3237.46 | 3632.39 | 5535.00 | 137.89 |
+| [datalab-to/chandra-ocr-2](./models/datalab2-ocr/benchmark_results.md)** | 2026-05-04 | BF16| 1 Node (1x RTX 6000)| 2600.67 | 5267.08 | 4603.00| 32.47 |
+| [lukealonso/GLM-5.1-NVFP4](./models/GLM5.1/nvfp4/results/benchmark_results_2node.md) | 2026-05-01 | NVFP4 | 2 Nodes (16x RTX 6000) | 3075.85 | 3451.06 | 4606.00 | 141.36 |
+| [lukealonso/GLM-5.1-NVFP4](./models/GLM5.1/nvfp4/results/benchmark_results_1node.md) | 2026-05-01 | NVFP4 | 1 Node (8x RTX 6000) | 1490.31 | 1672.11 | 734.00 | 73.82 |
+| [zai-org/GLM-5.1-FP8](./models/GLM5.1/results/benchmark-results.md) | 2026-05-01 | FP8 | 2 Nodes (16x RTX 6000) | 2785.55 | 3125.35 | 4092.00 | 155.26 |
+| [nvidia/DeepSeek-V3.2-NVFP4](./models/DeepSeekv3-2/nvp4/results/benchmark_results.md) | 2026-04-24 | NVFP4 | 1 Node (8x RTX 6000) | 2675.33 | 3012.42 | 2046.00 | 106.03 |
+| [deepseek-ai/DeepSeek-V3.2](./models/DeepSeekv3-2/fp8/results/benchmark_results.md) | 2026-04-23 | FP8 | 2 Nodes (16x RTX 6000) | 2962.79 | 3324.21 | 4951.00 | 149.29 |
 
 **[openai/whisper-large-v3](./models/whisper-v3-large/results/benchmark_results.md)** - Since this is ASR model, we did not apply the standard ISL/OSL of 1K/8K and concurrancy of 512.
 
-*Table last updated: August 5, 2026*
+*Table last updated: August 13, 2026*
  
 *Benchmarks conducted using `inf` request rate and 512 max concurrency. Tests utilized a random dataset with 1024 input tokens and 8192 output tokens (1536 total prompts). The load generator was isolated on a dedicated CPU-only node pool to ensure zero interference with GPU performance.*
 
@@ -46,6 +49,8 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 **\** datalab-to/chandra-ocr-2 is an VLM model. We have run an image benchmark different for the rest of the models **
 
 *\*\*\* DeepSeek-V4-Flash-0731 numbers come from its concurrency sweep (512 prompts, `1k/8k` @ 512 concurrency) rather than the 1536-prompt standard run. Its Peak column is the balanced `1k/1k` @ 512 result (4,710.94 output tok/s) — see the [sweep report](./models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md).*
+
+*\*\*\*\* gemma-4-26B-A4B is served with **vLLM** (not SGLang) on a single GPU, and is benchmarked with `sglang.bench_serving` as the client. Its main-table row is the `1k/8k` @ 512 concurrency point of the sweep; the Peak column is the best observed output throughput across all patterns (`1k/1k` @ 1024). Full sweep: [master_benchmark_summary.md](./models/Gemma4-26B/results/master_benchmark_summary.md).*
 
 ## [moonshotai/Kimi-K2.6](./models/KimiK2.6/agent_benchmark/README.md) Agentic Benchmark
 [Detailed Configuration & Results](./models/KimiK2.6/agent_benchmark/)
@@ -129,6 +134,53 @@ Full concurrency sweep (1 → 512) of DeepSeek's **V4-Flash** (Jul 31, 2026 chec
 
 TPOT moves only **75.3 → 106–113 ms/tok** from 1 → 512 streams; 100% success rate at every level. Charts: [results/charts/](./models/DeepSeekV4-Flash-0731/results/charts/). The unoptimized 1.6T [DeepSeek-V4-Pro config](./models/DeepSeekv4/) runs on the same topology.
 
+## [google/gemma-4-26B-A4B](./models/Gemma4-26B/results/master_benchmark_summary.md) Single-GPU Sweep (vLLM)
+[Detailed Configuration & Results](./models/Gemma4-26B/)
+
+The first **single-GPU** recipe in this repo: Gemma 4 26B (A4B MoE) served with **vLLM** on **one** RTX PRO 6000 Blackwell (`g4-standard-384`, TP=1, FP8), swept from concurrency 32 → 1024 across four workload patterns. Demonstrates that a trillion-class-quality chat model class can be served from a single GPU at >4K output tok/s.
+
+### Benchmark Settings
+- **Setup:** 1 Node, 1x RTX PRO 6000 (TP=1), FP8 quantization.
+- **Backend:** vLLM OpenAI API server; client is `sglang.bench_serving` on the isolated `cpu-bench-pool`.
+- **Workload Patterns:** `1k/512` (fast chat), `1k/1k` (balanced), `1k/8k` (reasoning), `8k/1k` (prompt-heavy).
+
+| Workload Pattern | Peak Output Tok/s | Peak Total Tok/s | @ Concurrency | Median TPOT | Median TTFT @ C=256 |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **1k / 1k (Balanced)** | **4,054.82** | 8,034.02 | 1024 | 58.88 ms | **229 ms** |
+| **1k / 512 (Fast Chat)** | 3,865.45 | **11,508.42** | 1024 | 61.41 ms | 414 ms |
+| **1k / 8k (Reasoning)** | 3,830.64 | 4,333.42 | 1024 | 62.60 ms | 430 ms |
+| **8k / 1k (Prompt Heavy)** | 2,162.20 | **18,537.77** | 1024 | 110.08 ms | 4,847 ms |
+
+**Operating guidance:** concurrency **256** is the sweet spot — it sustains ~80–85% of peak throughput while keeping median TTFT sub-second and ITL between 28–64 ms. Beyond 512, prefill queueing pushes TTFT into the tens of seconds with no throughput gain, so cap admission per replica and scale horizontally.
+
+### 10K Context Sweep (1 GPU vs. 2 GPU TP=2)
+Separate `10k/500` long-context sweep — [1 GPU report](./models/Gemma4-26B/results/sglang_benchmark_10k_500_report.md) · [2 GPU report](./models/Gemma4-26B/results/10k_500_2gpu/sglang_benchmark_10k_500_report.md).
+
+| Concurrency | 1 GPU Output Tok/s | 1 GPU Total Tok/s | 2 GPU Output Tok/s | 2 GPU Total Tok/s | 1 GPU Median TTFT | 2 GPU Median TTFT |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **64** | 729.19 | 16,934.05 | 858.69 | 19,941.52 | 674 ms | 627 ms |
+| **128** | 935.84 | 20,496.97 | 1,047.36 | 22,939.65 | 831 ms | 1,106 ms |
+| **256** | 1,048.57 | 23,733.47 | 1,149.44 | 26,016.63 | 14.3 s | 4.4 s |
+| **512** | **1,146.01** | **24,327.84** | **1,268.02** | **26,917.85** | 68.4 s | 38.8 s |
+
+Even at 10K prompt context, a single GPU holds median TTFT under **835 ms** through concurrency 128 while sustaining ~20.5K total tok/s. TP=2 buys roughly **+10% output throughput** and materially better tail latency, but not linear scaling — single-GPU replicas remain the more cost-efficient unit for this model.
+
+## [moonshotai/Kimi-K3](./models/kimik3/vibench_hard_results/VIBENCH_HARD_KIMIK3_REPORT.md) ViBench Hard (Agentic Coding)
+[Detailed Configuration & Results](./models/kimik3/vibench_hard_results/)
+
+Brownfield feature-extension suite run against Kimi-K3 on an **8-node / 32x GB200** SGLang deployment (MNNVL + DCP enabled), driven by 4-way parallel OpenHands agents with Playwright headless-browser assertions. This is the *hard* tier — meaningfully tougher than the 24-app ViBench run that scored 95.6/100.
+
+| Metric | Value |
+| :--- | :---: |
+| **Overall Normalized Score** | **79.2 / 100** |
+| **Zero-Score Artifacts** | **0 (0.0%)** |
+| **Perfect-Pass Artifacts** | 9 of 20 (45.0%) |
+| **Total Test Plans Evaluated** | 63 |
+| **Average Feature Build Time** | 44.7 min |
+| **Inference Cost** | $0.00 (self-hosted GKE) |
+
+Scores *rise* with task complexity — Feature 1 (schema additions) averaged 64.2/100 while Feature 3 (full-stack integrations) hit 84.8/100 and Feature 4 (brownfield refactoring) 96.8/100. Every artifact produced working code. The one systematic weak spot was `slack` (33.8/100), where real-time multi-context synchronization produced duplicate DOM state.
+
 ## [nvidia/GLM-5.2-NVFP4](./models/GLM5.2/GB300_GLM52_single_host_setup.md) GB300 Validation
 [GKE Configuration & Setup Guide](./models/GLM5.2/GB300_GLM52_single_host_setup.md)
 
@@ -165,17 +217,23 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
   - `DeepSeekV4-Flash-0731/`: 2-node config and concurrency sweep for DeepSeek-V4-Flash.
   - `DeepSeekv4/`: DeepSeek-V4-Pro (1.6T) 2-node config — not yet optimized.
   - `GLM5.1/`: Optimized configurations and results for GLM-5.1.
-  - `GLM5.2/`: Benchmarks and Blackwell (GB300) setup guides for GLM-5.2.
-  - `kimik3/`: Performance sweep and multi-node GB200 configs for Kimi-K3.
+  - `GLM5.2/`: Benchmarks, NVFP4 single-node config, and Blackwell (GB300) setup guides for GLM-5.2.
+  - `Gemma4-26B/`: Single-GPU (and TP=2) vLLM configs and concurrency sweeps for Gemma 4 26B.
+  - `kimik3/`: Performance sweep, multi-node GB200 configs, and ViBench/ViBench-Hard agentic results for Kimi-K3.
   - `KimiK2.5/`: Configurations for Kimi-K2.5.
   - `KimiK2.6/`: Agentic benchmark results and HiCache configurations.
   - `Qwen3.5-397B-A17B-FP8/`: Latency benchmarks for ultra-large MoE model.
 - `gkecluster/`: Infrastructure-as-Code for GKE provisioning.
 - `benchmarking_scripts/`: Global benchmark definitions and performance scripts.
   - `agentic_benchmark/`: Scripts for simulating agentic workloads.
+- `sglang_gemini_cli/`: Instructions for driving an SGLang-served model from Gemini CLI as a coding harness.
 - `gcp_g4_specs.md`: Detailed hardware and infrastructure specifications.
 
 ## Key Updates (July–August 2026)
+- **Gemma 4 26B Single-GPU Recipe**: Added a vLLM-based single-GPU (and TP=2) recipe for `gemma-4-26B-A4B` on G4, with a full 32 → 1024 concurrency sweep across four workload patterns — 4,055 output tok/s peak and sub-250 ms median TTFT through concurrency 256, plus a dedicated 10K-context sweep.
+- **Kimi-K3 ViBench Hard**: Ran the harder brownfield feature-extension tier on the 8-node (32x GB200) deployment — 79.2/100 normalized with zero failed artifacts; scores climb with task complexity (96.8/100 on Feature 4 refactors).
+- **Gemini CLI Harness**: Documented connecting Gemini CLI to a self-hosted SGLang endpoint (validated with Kimi-K3 and DeepSeek-V4-Flash-0731) for agentic coding workflows.
+- **GLM-5.2 NVFP4 Config**: Added a single-node NVFP4 SGLang configuration for GLM-5.2.
 - **DeepSeek-V4-Flash Sweep**: Benchmarked the Jul 31 checkpoint on 2 nodes with the FlashInfer MXFP4 MoE runner — 4,711 output tok/s at 512 concurrency with no saturation plateau; added an initial (unoptimized) config for the 1.6T DeepSeek-V4-Pro.
 - **Kimi-K3 ViBench**: 24-app agentic coding benchmark on the 8-node deployment — 95.6/100 average with the regular reasoning trace (81.5 with `reasoning_effort: low`).
 - **Kimi-K3 Performance Sweep**: Completed a full concurrency sweep for Kimi-K3 on a 4-node (16x GB200) Blackwell setup, achieving nearly 3000 tok/s on balanced workloads.
@@ -200,6 +258,8 @@ Detailed performance logs, including TTFT/TPOT latency distributions and through
 
 - [deepseek-ai/DeepSeek-V4-Flash-0731: models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md](./models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md)
 - [moonshotai/Kimi-K3: models/kimik3/results/benchamrk_sweep_report.md](./models/kimik3/results/benchamrk_sweep_report.md)
+- [moonshotai/Kimi-K3 ViBench Hard: models/kimik3/vibench_hard_results/VIBENCH_HARD_KIMIK3_REPORT.md](./models/kimik3/vibench_hard_results/VIBENCH_HARD_KIMIK3_REPORT.md)
+- [google/gemma-4-26B-A4B: models/Gemma4-26B/results/master_benchmark_summary.md](./models/Gemma4-26B/results/master_benchmark_summary.md)
 - [zai-org/GLM-5.2-FP8: models/GLM5.2/fp8/results/benchmark_results.yaml](./models/GLM5.2/fp8/results/benchmark_results.yaml)
 - [Qwen/Qwen3.5-397B-A17B-FP8: models/Qwen3.5-397B-A17B-FP8/BENCHMARK_REPORT.md](./models/Qwen3.5-397B-A17B-FP8/BENCHMARK_REPORT.md)
 - [moonshotai/Kimi-K2.6 Agentic: models/KimiK2.6/agent_benchmark/README.md](./models/KimiK2.6/agent_benchmark/README.md)
