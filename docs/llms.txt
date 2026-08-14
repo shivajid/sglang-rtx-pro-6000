@@ -5,7 +5,8 @@
 Key measured results (standard profile 1024 in / 8192 out, 512 concurrency, unless noted):
 - Kimi-K2.6 NVFP4, 2 nodes: 3,261.28 output tok/s — repo best (bench_one_batch peak: 14,015.66 tok/s prefill)
 - Kimi-K2.5 NVFP4, 2 nodes: 3,237.46 output tok/s
-- Kimi-K3 on 4-node GB200 (not G4): 2,883 total tok/s peak at concurrency 256 (1k/1k); ViBench agentic coding 95.6/100 over 24 apps on 8 nodes
+- Kimi-K3 on 4-node GB200 (not G4): 2,883 total tok/s peak at concurrency 256 (1k/1k); ViBench agentic coding 95.6/100 over 24 apps on 8 nodes; ViBench Hard (brownfield feature extension, 63 test plans) 79.2/100 with 0 failed artifacts
+- Gemma-4-26B-A4B FP8 on a single RTX PRO 6000 via vLLM: 4,054.82 output tok/s peak (1k/1k @ 1024c), sub-250 ms median TTFT through concurrency 256; 24,327 total tok/s on a 10K-prompt profile — the only single-GPU LLM recipe here
 - DeepSeek-V4-Flash-0731 MXFP4, 2 nodes: 4,711 output tok/s at concurrency 512 (1k/1k) with no saturation plateau; TPOT 75 → 107 ms from 1 → 512 streams
 - GLM-5.2 FP8, 2 nodes (early config): 1,645.21 output tok/s; NVFP4 validated on GB300 (A4X Max)
 - DeepSeek-V3.2 NVFP4, 1 node: 334.4 output tok/s per GPU with EAGLE speculation
@@ -28,6 +29,7 @@ Key measured results (standard profile 1024 in / 8192 out, 512 concurrency, unle
 - [GLM-5.1](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/GLM5.1): NEXTN speculation; super-linear 1→2 node scaling under saturation
 - [GLM-5.2](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/GLM5.2): FP8 2-node G4 results and GB300 (A4X Max) NVFP4 single-host setup guide
 - [Qwen3.5-397B](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/Qwen3.5): HiCache latency A/B with 20K-token prompts
+- [Gemma-4-26B](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/Gemma4-26B): single-GPU vLLM FP8 recipe, concurrency sweep 32→1024 across four workload shapes, plus a 10K-context 1-GPU vs TP=2 comparison
 - [Whisper-large-v3](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/Whisper): DP8 audio transcription, 55.6 req/s
 - [Chandra-OCR-2](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/ChandraOCR): single-GPU vision OCR, fastest TPOT in the repo (32.5 ms)
 
