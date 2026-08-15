@@ -33,6 +33,11 @@ Key measured results (standard profile 1024 in / 8192 out, 512 concurrency, unle
 - [Whisper-large-v3](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/Whisper): DP8 audio transcription, 55.6 req/s
 - [Chandra-OCR-2](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/ChandraOCR): single-GPU vision OCR, fastest TPOT in the repo (32.5 ms)
 
+## Agentic harness
+
+- [Gemini CLI + SGLang](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/sglang_gemini_cli): point the Gemini CLI at any SGLang OpenAI-compatible `/v1` endpoint via three environment variables (SGLANG_BASE_URL, GEMINI_MODEL, GEMINI_DEFAULT_AUTH_TYPE) to get a self-hosted coding agent with file edits and shell execution; validated with Kimi-K3 and DeepSeek-V4-Flash-0731; requires Node >= 20, run with `npx @shivajidnpm2026/gemini-cli`
+- [Harness setup guide on the docs site](https://shivajid.github.io/sglang-rtx-pro-6000/#geminicli): install, network path (direct pod IP vs kubectl port-forward), endpoint verification, environment variables, troubleshooting
+
 ## GKE Inference Gateway (llm-d)
 
 - [Inference Gateway recipes](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/KimiK2.6/gke-inference-gateway): prefix-cache-aware routing for SGLang and vLLM backends — Gateway API, InferencePool, Endpoint Picker (EPP); the EPP is a control-plane ext-proc that returns routing decisions and never carries traffic

@@ -226,13 +226,13 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
 - `gkecluster/`: Infrastructure-as-Code for GKE provisioning.
 - `benchmarking_scripts/`: Global benchmark definitions and performance scripts.
   - `agentic_benchmark/`: Scripts for simulating agentic workloads.
-- `sglang_gemini_cli/`: Instructions for driving an SGLang-served model from Gemini CLI as a coding harness.
+- [`sglang_gemini_cli/`](./sglang_gemini_cli/README.md): Point Gemini CLI at an SGLang endpoint to get an agentic coding harness on self-hosted models.
 - `gcp_g4_specs.md`: Detailed hardware and infrastructure specifications.
 
 ## Key Updates (July–August 2026)
 - **Gemma 4 26B Single-GPU Recipe**: Added a vLLM-based single-GPU (and TP=2) recipe for `gemma-4-26B-A4B` on G4, with a full 32 → 1024 concurrency sweep across four workload patterns — 4,055 output tok/s peak and sub-250 ms median TTFT through concurrency 256, plus a dedicated 10K-context sweep.
 - **Kimi-K3 ViBench Hard**: Ran the harder brownfield feature-extension tier on the 8-node (32x GB200) deployment — 79.2/100 normalized with zero failed artifacts; scores climb with task complexity (96.8/100 on Feature 4 refactors).
-- **Gemini CLI Harness**: Documented connecting Gemini CLI to a self-hosted SGLang endpoint (validated with Kimi-K3 and DeepSeek-V4-Flash-0731) for agentic coding workflows.
+- **[Gemini CLI Harness](./sglang_gemini_cli/README.md)**: Full setup guide for connecting Gemini CLI to a self-hosted SGLang endpoint (validated with Kimi-K3 and DeepSeek-V4-Flash-0731) — turns a served checkpoint into an agent that edits files and runs shell commands, with no external API and no per-token cost.
 - **GLM-5.2 NVFP4 Config**: Added a single-node NVFP4 SGLang configuration for GLM-5.2.
 - **DeepSeek-V4-Flash Sweep**: Benchmarked the Jul 31 checkpoint on 2 nodes with the FlashInfer MXFP4 MoE runner — 4,711 output tok/s at 512 concurrency with no saturation plateau; added an initial (unoptimized) config for the 1.6T DeepSeek-V4-Pro.
 - **Kimi-K3 ViBench**: 24-app agentic coding benchmark on the 8-node deployment — 95.6/100 average with the regular reasoning trace (81.5 with `reasoning_effort: low`).

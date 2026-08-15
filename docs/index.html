@@ -306,6 +306,7 @@ ul.plain li{margin-bottom:5px;max-width:66ch}
     <a href="#ocr" data-page="ocr">Chandra-OCR-2</a>
     <div class="glabel">Deep dives</div>
     <a href="#agentic" data-page="agentic">Agentic benchmark</a>
+    <a href="#geminicli" data-page="geminicli">Gemini CLI harness</a>
     <a href="#longcontext" data-page="longcontext">Long context</a>
     <a href="#gateway" data-page="gateway">Inference Gateway</a>
     <a href="#network" data-page="network">Network &amp; NCCL</a>
@@ -394,6 +395,7 @@ ul.plain li{margin-bottom:5px;max-width:66ch}
     <a href="#whisper"><span class="it">Whisper-large-v3</span><span class="id">ASR with data parallelism, three API styles</span></a>
     <a href="#ocr"><span class="it">Chandra-OCR-2</span><span class="id">9B vision OCR on a single GPU</span></a>
     <a href="#agentic"><span class="it">Agentic benchmark</span><span class="id">Real trace replay, HiCache, SMG router</span></a>
+    <a href="#geminicli"><span class="it">Gemini CLI harness</span><span class="id">Point Gemini CLI at an SGLang endpoint — agentic coding on self-hosted models</span></a>
     <a href="#gateway"><span class="it">Inference Gateway</span><span class="id">Prefix-cache-aware routing on GKE</span></a>
     <a href="#network"><span class="it">Network &amp; NCCL</span><span class="id">DRANET dual-NIC fabric benchmarks</span></a>
   </div>
@@ -1290,10 +1292,100 @@ smg launch --worker-urls http://&lt;N1&gt;:30000 http://&lt;N2&gt;:30000 \
   --policy power_of_two --host 0.0.0.0 --port 8000 \
   --request-timeout-secs 1800 --max-concurrent-requests 512</pre></div>
   <div class="callout warn"><p>HiCache with Local-SSD or Lustre file backends currently crashes SGLang — host-memory HiCache is the validated path.</p></div>
-  <div class="pagenav"><a href="#ocr">← Chandra-OCR-2</a><a href="#longcontext">Long context →</a></div>
+  <div class="pagenav"><a href="#ocr">← Chandra-OCR-2</a><a href="#geminicli">Gemini CLI harness →</a></div>
 </section>
 
-<!-- LONG CONTEXT -->
+<!-- GEMINI CLI -->
+<section class="page" id="page-geminicli">
+  <h1 class="pagetitle">Gemini CLI as an agentic harness</h1>
+  <p class="lede">Every benchmark on this site measures raw serving throughput. This page is about what sits <i>on top</i> of it: pointing the <b>Gemini CLI</b> at an SGLang endpoint so a self-hosted model can read files, run shell commands, and iterate across turns — a real coding agent, no external API, no per-token cost.</p>
+  <div class="meta"><span class="chip"><a href="https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/sglang_gemini_cli" target="_blank" rel="noopener" style="text-decoration:none">files on GitHub ↗</a></span><span class="chip">npm <b>@shivajidnpm2026/gemini-cli</b></span><span class="chip">Node <b>≥ 20</b></span><span class="chip">OpenAI-compatible <code class="inline">/v1</code></span><span class="chip">Apache-2.0</span></div>
+
+  <div class="callout"><p><b>Why this matters.</b> SGLang gives you tokens; it does not give you an agent. The harness supplies the loop — tool definitions, file edits, shell execution, multi-turn state — that turns a served checkpoint into something that can actually build software. The <a href="#k3-vibench">ViBench</a> and <a href="#k3-vibench-hard">ViBench Hard</a> results on this site were produced by exactly this class of setup, and the throughput numbers elsewhere are what determine whether an agent session feels responsive or sluggish.</p></div>
+
+  <h3 id="gc-what">What this actually is</h3>
+  <p>Google's <a href="https://github.com/google-gemini/gemini-cli" target="_blank" rel="noopener">Gemini CLI</a> normally talks to Gemini models. The build published here is a fork, republished to npm as <code class="inline">@shivajidnpm2026/gemini-cli</code>, patched so its model backend can be redirected at any <b>OpenAI-compatible</b> <code class="inline">/v1</code> endpoint — which is what SGLang serves. Nothing about your SGLang deployment needs to change; it is purely a client-side redirect driven by three environment variables.</p>
+  <p>Validated against <a href="#kimik3">Kimi-K3</a> and <a href="#dsv4flash">DeepSeek-V4-Flash-0731</a>. Any model with solid tool-calling behavior should work — the recipes on this site all expose the same API surface.</p>
+
+  <h3 id="gc-install">1 · Install Node 20+</h3>
+  <p>The CLI declares <code class="inline">engines.node &gt;= 20</code> and will refuse to start on older runtimes. On a fresh Debian/Ubuntu VM:</p>
+  <div class="codeblock"><div class="chead"><span>Node 20 LTS via NodeSource</span><button class="copybtn">Copy</button></div><pre>sudo apt-get update
+sudo apt-get install -y git curl build-essential python3
+
+<span class="c"># Node.js 20.x LTS</span>
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+node -v   <span class="c"># v20.x or higher</span>
+npm -v    <span class="c"># 10.x or higher</span></pre></div>
+
+  <h3 id="gc-reach">2 · Get a network path to the server</h3>
+  <p>Two ways to reach an SGLang pod on GKE. Pick one — the port you end up talking to is the port you put in <code class="inline">SGLANG_BASE_URL</code>, and mixing the two up is the most common setup mistake here.</p>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Option</th><th>When</th><th>Endpoint you use</th></tr></thead>
+    <tbody>
+      <tr><td><b>A · Direct service/pod IP</b></td><td>Client VM is on the same VPC as the cluster</td><td><code class="inline">http://&lt;pod-ip&gt;:30000/v1</code></td></tr>
+      <tr><td><b>B · <code class="inline">kubectl port-forward</code></b></td><td>Working from a laptop or outside the VPC</td><td><code class="inline">http://localhost:&lt;local-port&gt;/v1</code></td></tr>
+    </tbody>
+  </table></div>
+  <div class="codeblock"><div class="chead"><span>option B — port-forward</span><button class="copybtn">Copy</button></div><pre>gcloud container clusters get-credentials &lt;cluster_name&gt; \
+  --zone &lt;zone&gt; --project &lt;project_id&gt; --dns-endpoint
+
+<span class="c"># syntax is LOCAL:REMOTE — 30000 locally maps to 30100 in the pod</span>
+kubectl port-forward pod/&lt;pod_name&gt; 30000:30100</pre></div>
+  <div class="callout"><p><b>Check which port your server actually listens on.</b> The SGLang recipes on this site bind <code class="inline">30000</code> or <code class="inline">30100</code> depending on the deployment. With <code class="inline">port-forward 30000:30100</code> the remote side is <code class="inline">30100</code> and you connect to <code class="inline">localhost:30000</code>. If <code class="inline">/v1/models</code> hangs or refuses the connection, this mapping is almost always why.</p></div>
+
+  <h3 id="gc-verify">3 · Verify the endpoint before touching the CLI</h3>
+  <p>Confirm the server answers and note the exact model string it reports — you need it verbatim in the next step.</p>
+  <div class="codeblock"><div class="chead"><span>verify</span><button class="copybtn">Copy</button></div><pre><span class="c"># list served models — copy the "id" field from the response</span>
+curl http://&lt;host&gt;:30000/v1/models
+
+<span class="c"># one round-trip through chat completions</span>
+curl http://&lt;host&gt;:30000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "messages": [
+      {"role": "user", "content": "Hello! What model are you?"}
+    ],
+    "max_tokens": 128,
+    "temperature": 0.6
+  }'</pre></div>
+
+  <h3 id="gc-env">4 · Set the three environment variables</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Variable</th><th>Value</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code class="inline">SGLANG_BASE_URL</code></td><td><code class="inline">http://&lt;host&gt;:30000/v1</code></td><td>Must include the <code class="inline">/v1</code> suffix</td></tr>
+      <tr><td><code class="inline">GEMINI_MODEL</code></td><td>e.g. <code class="inline">deepseek-ai/DeepSeek-V4-Flash-0731</code></td><td>Exactly the <code class="inline">id</code> from <code class="inline">/v1/models</code> — no aliasing</td></tr>
+      <tr><td><code class="inline">GEMINI_DEFAULT_AUTH_TYPE</code></td><td><code class="inline">sglang</code></td><td>Any non-empty string; it only bypasses the Google auth flow</td></tr>
+    </tbody>
+  </table></div>
+  <div class="codeblock"><div class="chead"><span>environment</span><button class="copybtn">Copy</button></div><pre>export SGLANG_BASE_URL=http://&lt;ip&gt;:30000/v1
+export GEMINI_MODEL="deepseek-ai/DeepSeek-V4-Flash-0731"
+export GEMINI_DEFAULT_AUTH_TYPE="sglang"</pre></div>
+
+  <h3 id="gc-run">5 · Run it</h3>
+  <div class="codeblock"><div class="chead"><span>launch</span><button class="copybtn">Copy</button></div><pre>npx @shivajidnpm2026/gemini-cli</pre></div>
+  <p>The CLI starts in your current working directory and treats it as the project root — so <code class="inline">cd</code> into the repo you want the agent to work on first. From there it behaves like the upstream Gemini CLI: it reads and edits files, runs shell commands, and iterates, with every token served by your own GPUs.</p>
+
+  <h3 id="gc-trouble">Troubleshooting</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead>
+    <tbody>
+      <tr><td>Connection refused / request hangs</td><td>Port mismatch between <code class="inline">port-forward</code> and <code class="inline">SGLANG_BASE_URL</code>, or the pod listens on a different port than assumed</td></tr>
+      <tr><td>404 on requests</td><td><code class="inline">/v1</code> missing from <code class="inline">SGLANG_BASE_URL</code></td></tr>
+      <tr><td>Model-not-found errors</td><td><code class="inline">GEMINI_MODEL</code> doesn't match the <code class="inline">id</code> in <code class="inline">/v1/models</code> character for character</td></tr>
+      <tr><td>CLI exits immediately on start</td><td>Node older than 20 — check <code class="inline">node -v</code></td></tr>
+      <tr><td>Agent stalls on long multi-step tasks</td><td>Context window exhaustion. Reasoning-heavy models are verbose; on Kimi-K3 see the <code class="inline">reasoning_effort</code> discussion in <a href="#k3-vibench">ViBench</a></td></tr>
+      <tr><td>Sluggish turns under load</td><td>TPOT at your concurrency, not the harness — see the <a href="#ov-results">benchmark table</a> for what each recipe sustains</td></tr>
+    </tbody>
+  </table></div>
+  <p style="font-size:12.5px;color:var(--soft)">The published build tracks upstream nightly <code class="inline">0.55.0-nightly.20260729</code> (Apache-2.0, fork of <a href="https://github.com/google-gemini/gemini-cli" target="_blank" rel="noopener">google-gemini/gemini-cli ↗</a>). It is a personal republish for this workflow, not an official Google distribution — pin the version if you need reproducibility.</p>
+  <div class="pagenav"><a href="#agentic">← Agentic benchmark</a><a href="#longcontext">Long context →</a></div>
+</section>
+
+<!-- LONGCONTEXT -->
 <section class="page" id="page-longcontext">
   <h1 class="pagetitle">Long context — Kimi-K2.6 on vLLM</h1>
   <div class="meta"><span class="chip"><a href="https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/KimiK2.6/longcontext-bench" target="_blank" rel="noopener" style="text-decoration:none">models/KimiK2.6/longcontext-bench/ on GitHub ↗</a></span></div>
