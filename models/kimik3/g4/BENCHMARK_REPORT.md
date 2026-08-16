@@ -35,15 +35,15 @@ The benchmark evaluates low-to-medium concurrency scalability, system aggregate 
 
 **Output throughput vs concurrency** — throughput scales near-linearly as concurrency increases from 8 to 32 streams. The balanced `1k/1k` pattern reaches **228.6 Output Tok/s @ 32**, `1k/8k` reaches **224.8 Output Tok/s**, and `1k/500` reaches **205.6 Output Tok/s**.
 
-![Kimi-K3 Output Throughput vs Concurrency](bench_results/charts/throughput_scaling.svg)
+![Kimi-K3 Output Throughput vs Concurrency](bench_results/charts/throughput_vs_concurrency.svg)
 
 **Time to First Token (TTFT) vs concurrency** — for 1K prompts, median TTFT remains flat and sub-**360 ms** through concurrency 32. The 8K prompt pattern prefill time is **1.18 s to 2.02 s**, scaling smoothly without prefill thrashing.
 
-![Kimi-K3 TTFT vs Concurrency](bench_results/charts/ttft_comparison.svg)
+![Kimi-K3 TTFT vs Concurrency](bench_results/charts/ttft_vs_concurrency.svg)
 
 **Time Per Output Token (TPOT) vs concurrency** — from a **101.7 ms/tok** baseline at C=8, TPOT increases to only **105.7–110.4 ms/tok at C=32** for standard prompts, maintaining ~9.1–9.8 tok/s per user stream.
 
-![Kimi-K3 TPOT vs Concurrency](bench_results/charts/tpot_comparison.svg)
+![Kimi-K3 TPOT vs Concurrency](bench_results/charts/tpot_vs_concurrency.svg)
 
 ---
 

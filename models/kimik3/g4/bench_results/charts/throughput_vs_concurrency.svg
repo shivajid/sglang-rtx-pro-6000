@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 460" width="100%" height="100%" style="background:#181825; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;">
+  <style>
+    .title { fill: #cdd6f4; font-size: 18px; font-weight: bold; }
+    .subtitle { fill: #a6adc8; font-size: 13px; }
+    .axis { stroke: #45475a; stroke-width: 1.5; }
+    .grid { stroke: #313244; stroke-dasharray: 4; stroke-width: 1; }
+    .label { fill: #bac2de; font-size: 12px; }
+    .legend { fill: #cdd6f4; font-size: 12px; font-weight: 500; }
+    .dot-label { fill: #ffffff; font-size: 11px; font-weight: 600; text-anchor: middle; }
+  </style>
+
+  <!-- Title -->
+  <text x="50" y="38" class="title">Kimi-K3 on G4: Output Token Throughput vs Concurrency</text>
+  <text x="50" y="58" class="subtitle">System Aggregate Output Generation Speed (Tokens/Second) across Concurrencies 8, 16, 32</text>
+
+  <!-- Grid lines & Y Labels -->
+  <line x1="100" y1="350" x2="740" y2="350" class="axis" />
+  <text x="85" y="355" class="label" text-anchor="end">0</text>
+  <line x1="100" y1="300" x2="740" y2="300" class="grid" />
+  <text x="85" y="305" class="label" text-anchor="end">50</text>
+  <line x1="100" y1="250" x2="740" y2="250" class="grid" />
+  <text x="85" y="255" class="label" text-anchor="end">100</text>
+  <line x1="100" y1="200" x2="740" y2="200" class="grid" />
+  <text x="85" y="205" class="label" text-anchor="end">150</text>
+  <line x1="100" y1="150" x2="740" y2="150" class="grid" />
+  <text x="85" y="155" class="label" text-anchor="end">200</text>
+  <line x1="100" y1="100" x2="740" y2="100" class="grid" />
+  <text x="85" y="105" class="label" text-anchor="end">250 t/s</text>
+
+  <!-- X Axis Lines & Labels -->
+  <line x1="180" y1="100" x2="180" y2="350" class="grid" />
+  <text x="180" y="375" class="label" text-anchor="middle" font-weight="bold">Concurrency 8</text>
+  <line x1="440" y1="100" x2="440" y2="350" class="grid" />
+  <text x="440" y="375" class="label" text-anchor="middle" font-weight="bold">Concurrency 16</text>
+  <line x1="700" y1="100" x2="700" y2="350" class="grid" />
+  <text x="700" y="375" class="label" text-anchor="middle" font-weight="bold">Concurrency 32</text>
+
+  <!-- Line 1: 1k_1k (Blue) -> (180, scale_tp(59.09)), (440, scale_tp(120.02)), (700, scale_tp(228.64)) -->
+  <polyline points="180,290.90999999999997 440,229.98000000000002 700,121.36000000000001" fill="none" stroke="#89b4fa" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="290.90999999999997" r="6" fill="#89b4fa" stroke="#181825" stroke-width="2" />
+  <text x="180" y="278.90999999999997" class="dot-label">59.1 t/s</text>
+  <circle cx="440" cy="229.98000000000002" r="6" fill="#89b4fa" stroke="#181825" stroke-width="2" />
+  <text x="440" y="217.98000000000002" class="dot-label">120.0 t/s</text>
+  <circle cx="700" cy="121.36000000000001" r="6" fill="#89b4fa" stroke="#181825" stroke-width="2" />
+  <text x="700" y="109.36000000000001" class="dot-label">228.6 t/s</text>
+
+  <!-- Line 2: 1k_8k (Teal) -> (180, scale_tp(61.88)), (440, scale_tp(117.47)), (700, scale_tp(224.77)) -->
+  <polyline points="180,288.12 440,232.53 700,125.22999999999999" fill="none" stroke="#94e2d5" stroke-width="3" stroke-dasharray="6,4" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="288.12" r="5" fill="#94e2d5" stroke="#181825" stroke-width="1.5" />
+  <circle cx="440" cy="232.53" r="5" fill="#94e2d5" stroke="#181825" stroke-width="1.5" />
+  <circle cx="700" cy="125.22999999999999" r="5" fill="#94e2d5" stroke="#181825" stroke-width="1.5" />
+
+  <!-- Line 3: 1k_500 (Green) -> (180, scale_tp(27.81)), (440, scale_tp(109.21)), (700, scale_tp(205.55)) -->
+  <polyline points="180,322.19 440,240.79000000000002 700,144.45" fill="none" stroke="#a6e3a1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="322.19" r="5" fill="#a6e3a1" stroke="#181825" stroke-width="1.5" />
+  <circle cx="440" cy="240.79000000000002" r="5" fill="#a6e3a1" stroke="#181825" stroke-width="1.5" />
+  <circle cx="700" cy="144.45" r="5" fill="#a6e3a1" stroke="#181825" stroke-width="1.5" />
+
+  <!-- Line 4: 8k_1k (Peach) -> (180, scale_tp(52.33)), (440, scale_tp(99.40)), (700, scale_tp(177.47)) -->
+  <polyline points="180,297.67 440,250.6 700,172.53" fill="none" stroke="#fab387" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="297.67" r="5" fill="#fab387" stroke="#181825" stroke-width="1.5" />
+  <circle cx="440" cy="250.6" r="5" fill="#fab387" stroke="#181825" stroke-width="1.5" />
+  <circle cx="700" cy="172.53" r="5" fill="#fab387" stroke="#181825" stroke-width="1.5" />
+
+  <!-- Legend -->
+  <line x1="220" y1="420" x2="245" y2="420" stroke="#89b4fa" stroke-width="3" />
+  <circle cx="232" cy="420" r="4" fill="#89b4fa" />
+  <text x="252" y="424" class="legend">1k/1k (Balanced)</text>
+
+  <line x1="370" y1="420" x2="395" y2="420" stroke="#94e2d5" stroke-width="3" stroke-dasharray="4,3" />
+  <circle cx="382" cy="420" r="4" fill="#94e2d5" />
+  <text x="402" y="424" class="legend">1k/8k (Long Gen)</text>
+
+  <line x1="520" y1="420" x2="545" y2="420" stroke="#a6e3a1" stroke-width="3" />
+  <circle cx="532" cy="420" r="4" fill="#a6e3a1" />
+  <text x="552" y="424" class="legend">1k/500 (Short)</text>
+
+  <line x1="660" y1="420" x2="685" y2="420" stroke="#fab387" stroke-width="3" />
+  <circle cx="672" cy="420" r="4" fill="#fab387" />
+  <text x="692" y="424" class="legend">8k/1k (Long Prompt)</text>
+</svg>
