@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kimik3-hdml-downloader
+  namespace: default
+spec:
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: sglang-sa
+      nodeSelector:
+        cloud.google.com/gke-nodepool: g4-384-pool-pm-crwd
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: downloader
+        image: google/cloud-sdk:slim
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "=== Starting Kimi-K3 sync to Hyperdisk ML ==="
+          mkdir -p /data/model
+          echo "Syncing from gs://shivajid-kimik3-useast5-ckpt/ to /data/model/ ..."
+          gcloud storage rsync -r gs://shivajid-kimik3-useast5-ckpt/ /data/model/
+          echo "Sync complete! Checking disk contents:"
+          ls -lh /data/model
+          echo "Disk usage:"
+          df -h /data/model
+          echo "=== Finished successfully ==="
+        volumeMounts:
+        - name: model-disk
+          mountPath: /data/model
+      volumes:
+      - name: model-disk
+        persistentVolumeClaim:
+          claimName: kimik3-hdml-writer-pvc
