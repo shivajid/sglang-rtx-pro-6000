@@ -34,16 +34,6 @@
     <span>Max output tokens</span>
     <input id="max-tokens" type="number" min="64" max="262144" step="64" placeholder="server default" />
   </label>
-  <label class="field">
-    <span>Image size</span>
-    <select id="img-size">
-      <option>1024x1024</option>
-      <option>1328x1328</option>
-      <option>1280x720</option>
-      <option>720x1280</option>
-      <option>512x512</option>
-    </select>
-  </label>
   <label class="field check">
     <input id="show-thinking" type="checkbox" checked />
     <span>Show reasoning traces</span>
@@ -53,20 +43,16 @@
 <main id="thread" class="thread" aria-live="polite">
   <div class="empty" id="empty">
     <h1>Talk to Kimi&#8209;K3.</h1>
-    <p>Attach an image and ask about it, or switch the composer to <b>Generate image</b> to draw one.</p>
+    <p>Type a message or attach images for multi-modal vision analysis.</p>
     <div class="starters">
-      <button class="starter">Read this screenshot and list every error you can see.</button>
-      <button class="starter">Summarise this diagram for someone who has not seen it.</button>
-      <button class="starter">Draw a cutaway of a GPU server rack, technical illustration.</button>
+      <button class="starter">Explain the difference between linear attention and softmax attention.</button>
+      <button class="starter">Read this screenshot and list every detail you can see.</button>
+      <button class="starter">Summarise this architecture diagram for someone who has not seen it.</button>
     </div>
   </div>
 </main>
 
 <form id="composer" class="composer" autocomplete="off">
-  <div class="mode" role="tablist" aria-label="Composer mode">
-    <button type="button" class="mode-btn is-on" data-mode="chat" role="tab">Chat</button>
-    <button type="button" class="mode-btn" data-mode="image" role="tab" id="mode-image">Generate image</button>
-  </div>
   <div id="tray" class="tray" hidden></div>
   <div class="input-row">
     <label class="attach" title="Attach images">

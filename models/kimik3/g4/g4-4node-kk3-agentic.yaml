@@ -1,0 +1,355 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: kimik3-hdml-ro-pv
+spec:
+  storageClassName: ""
+  capacity:
+    storage: 2000Gi
+  accessModes:
+    - ReadOnlyMany
+  claimRef:
+    namespace: default
+    name: kimik3-hdml-pvc
+  csi:
+    driver: pd.csi.storage.gke.io
+    volumeHandle: projects/northam-ce-mlai-tpu/zones/us-east5-a/disks/kimik3-hyperdisk-ml
+    fsType: ext4
+    readOnly: true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kimik3-hdml-pvc
+  namespace: default
+spec:
+  storageClassName: ""
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 2000Gi
+  volumeName: kimik3-hdml-ro-pv
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sglang-sa
+  namespace: default
+  annotations:
+    iam.gke.io/gcp-service-account: workload-identity-gcp-sa@northam-ce-mlai-tpu.iam.gserviceaccount.com
+---
+# Headless Service for distributed multi-node master discovery (Pod Index 0 / Node Rank 0)
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-kimi-k3-master
+  namespace: default
+  labels:
+    app: sglang-kimi-k3-g4
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: sglang-kimi-k3-g4
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: dist-port
+    port: 20000
+    targetPort: 20000
+---
+# Serving Service to route inference traffic to the Master Pod
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-kimi-k3-serving
+  namespace: default
+  labels:
+    app: sglang-kimi-k3-g4
+spec:
+  type: NodePort
+  selector:
+    app: sglang-kimi-k3-g4
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: http-inference
+    port: 30000
+    targetPort: 30000
+---
+# SM120 (RTX Pro 6000 / G4) kernel-guard hot-patch script, mounted into the
+# sglang container at /patch and run before `sglang serve` (see command below).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sglang-kimi-k3-sm120-patch
+  namespace: default
+  labels:
+    app: sglang-kimi-k3-g4
+data:
+  patch_sm120.py: |
+    # SM120 (RTX Pro 6000 / GCP G4) kernel-guard hot-patch for SGLang.
+    #
+    # tcgen05 / TMEM / cp.async.bulk exist only on datacenter Blackwell (SM100,
+    # compute-capability major 10). SM120 reports a HIGHER major (12) but lacks
+    # these instructions, so `major >= 10` guards wrongly enable SM100-only
+    # kernels and ptxas fails to JIT-compile them on G4.
+    #
+    # Each gate is rewritten to import is_sm100_supported LAZILY inside the
+    # function body, so the patch is self-contained and does NOT depend on the
+    # module's import header (which differs between the kimi-k3 image and main,
+    # and previously caused a NameError when only the body was rewritten).
+    # Idempotent; a py_compile smoke test runs after patching to fail fast.
+    import os
+    import py_compile
+    import re
+
+    base = os.environ.get("SGLANG_SRC", "/sgl-workspace/sglang/python/sglang")
+    attn_residual = os.path.join(base, "srt/layers/attn_residual.py")
+    cutedsl = [
+        os.path.join(base, "srt/layers/attention/linear/kernels/gdn_cutedsl.py"),
+        os.path.join(base, "srt/layers/attention/linear/kernels/kda_cutedsl.py"),
+    ]
+
+    def patch_attn_residual(s):
+        # Make _use_fast self-contained: lazy import + SM100-only gate.
+        # Matches the image's exact body (no is_npu) AND newer main (is_npu).
+        new_body = (
+            "    global _FAST_SUPPORTED\n"
+            "    if _FAST_SUPPORTED is None:\n"
+            "        from sglang.srt.utils import is_sm100_supported\n"
+            "        _FAST_SUPPORTED = is_sm100_supported()\n"
+            "    return _FAST_SUPPORTED and hidden_size == 7168"
+        )
+        pattern = re.compile(
+            r"    global _FAST_SUPPORTED\n"
+            r"(?:    if is_npu\(\):\n"
+            r"        return False\n)?"
+            r"    if _FAST_SUPPORTED is None:\n"
+            r"(?:        from sglang\.srt\.utils import is_sm100_supported\n)?"
+            r"        (?:major, _ = torch\.cuda\.get_device_capability\(\)\n"
+            r"        )?_FAST_SUPPORTED = (?:major >= 10|is_sm100_supported\(\))\n"
+            r"    return _FAST_SUPPORTED and hidden_size == 7168"
+        )
+        s, n = pattern.subn(new_body, s)
+        if n == 0 and "_FAST_SUPPORTED = is_sm100_supported()" not in s:
+            raise SystemExit("[sm120-patch] ERROR: could not patch _use_fast body")
+        return s
+
+    def patch_cutedsl(s):
+        # Make _is_blackwell self-contained: lazy import + SM100-only gate.
+        new_body = (
+            "    from sglang.srt.utils import is_sm100_supported\n"
+            "    return is_sm100_supported()"
+        )
+        pattern = re.compile(
+            r"    (?:from sglang\.srt\.utils import is_sm100_supported\n"
+            r"    )?"
+            r"(?:if not torch\.cuda\.is_available\(\):\n"
+            r"        return False\n"
+            r"    major, _ = torch\.cuda\.get_device_capability\(\)\n"
+            r"    return major >= 10"
+            r"|return is_sm100_supported\(\))"
+        )
+        s, n = pattern.subn(new_body, s)
+        if n == 0 and "return is_sm100_supported()" not in s:
+            raise SystemExit("[sm120-patch] ERROR: could not patch _is_blackwell body")
+        return s
+
+    patched = []
+    for path in [attn_residual] + cutedsl:
+        if not os.path.exists(path):
+            print("[sm120-patch] SKIP (not found):", path)
+            continue
+        src = open(path).read()
+        fn = patch_attn_residual if path == attn_residual else patch_cutedsl
+        open(path, "w").write(fn(src))
+        patched.append(path)
+        print("[sm120-patch] patched:", path)
+
+    # Fail fast: no stale `major >= 10` guard may remain, and every patched
+    # file must compile (catches NameError-class breakage before serve starts).
+    bad = [p for p in patched if "major >= 10" in open(p).read()]
+    if bad:
+        raise SystemExit("[sm120-patch] ERROR: 'major >= 10' still present in %s" % bad)
+    for p in patched:
+        py_compile.compile(p, doraise=True)
+    print("[sm120-patch] OK: SM120 will use the Triton fallback kernels.")
+---
+# 4-Node Distributed StatefulSet with Pipeline Parallelism (PP=4, TP=8) on Hyperdisk ML
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sglang-kimi-k3-g4
+  namespace: default
+  labels:
+    app: sglang-kimi-k3-g4
+spec:
+  podManagementPolicy: Parallel
+  replicas: 4
+  serviceName: "sglang-kimi-k3-master"
+  selector:
+    matchLabels:
+      app: sglang-kimi-k3-g4
+  template:
+    metadata:
+      labels:
+        app: sglang-kimi-k3-g4
+        inference.networking.k8s.io/engine-type: sglang
+      annotations:
+        networking.gke.io/default-interface: "ens4"
+    spec:
+      serviceAccountName: sglang-sa
+      hostNetwork: true
+      hostIPC: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        cloud.google.com/gke-nodepool: g4-384-pool-pm-crwd
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/disk-pressure"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: sglang-container
+        image: lmsysorg/sglang:nightly-dev-cu13-20260816-4a6dc267
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+          capabilities:
+            add: ["IPC_LOCK", "SYS_PTRACE"]
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          mkdir -p /dev/shm/hf_cache /dev/shm/tmp || true
+          echo "=== STARTING KIMI-K3 SGLANG SERVE ON G4 WITH HYPERDISK ML (NODE RANK: ${POD_INDEX}) ==="
+          MY_IP=$(hostname -I | awk '{print $1}')
+          echo "Host IP: ${MY_IP}"
+          echo "Node Rank: ${POD_INDEX} / Total Nodes: 4"
+          echo "Master Address: sglang-kimi-k3-master:20000"
+
+          # --- SM120 (RTX Pro 6000) hot-patch -------------------------------
+          # tcgen05 / TMEM / cp.async.bulk exist only on datacenter Blackwell
+          # (SM100, capability major 10). SM120 reports a HIGHER major (12) but
+          # lacks these instructions, so `major >= 10` guards wrongly enable
+          # SM100-only kernels and ptxas fails to JIT them on G4. Rewrite those
+          # guards to select SM100 exactly so SM120 falls back to Triton.
+          # Idempotent; no-ops cleanly if the image is already fixed.
+          python3 /patch/patch_sm120.py
+          # --- end SM120 hot-patch ------------------------------------------
+
+          # --- SGLang Server Execution ---
+          # MoE: flashinfer_mxfp4 routes SM120 -> cutlass_sm120 (fused-MoE path)
+          # CUDA-graph decode: 'breakable' backend with batch sizes up to 64
+          # HiCache: spills KV prefix cache to host RAM for multi-turn agent sessions
+          # Triton attention: 16 KV splits for long-context decode
+          sglang serve \
+            --model-path /data/model \
+            --served-model-name moonshotai/Kimi-K3 \
+            --tp-size 8 \
+            --pp-size 4 \
+            --nnodes 4 \
+            --node-rank ${POD_INDEX} \
+            --dist-init-addr sglang-kimi-k3-master:20000 \
+            --moe-runner-backend marlin \
+            --attention-backend triton \
+            --watchdog-timeout 3600 \
+            --skip-server-warmup \
+            --mem-fraction-static 0.9 \
+            --kv-cache-dtype fp8_e4m3 \
+            --max-mamba-cache-size 256 \
+            --context-length 131072 \
+            --enable-hierarchical-cache \
+            --hicache-ratio 1.0 \
+            --hicache-write-policy write_through \
+            --hicache-io-backend direct \
+            --hicache-mem-layout page_first \
+            --triton-attention-num-kv-splits 16 \
+            --reasoning-parser kimi_k3 \
+            --tool-call-parser kimi_k3 \
+            --host 0.0.0.0 \
+            --port 30000 \
+            --trust-remote-code \
+            --enable-metrics || true
+
+          # Keep container alive if sglang serve exits for post-mortem debugging
+          echo "sglang serve process finished or exited. Keeping container alive for debugging..."
+          sleep infinity
+        env:
+        - name: POD_INDEX
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: HF_HOME
+          value: /dev/shm/hf_cache
+        - name: TMPDIR
+          value: /dev/shm/tmp
+        # NCCL / Inter-node Communication for G4 Titanium Networking & PCIe
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0, eth1"
+        - name: NCCL_P2P_LEVEL
+          value: "SYS"
+        - name: NCCL_SOCKET_NTHREADS
+          value: "8"
+        - name: NCCL_NSOCKS_PERTHREAD
+          value: "8"
+        - name: NCCL_MIN_NCHANNELS
+          value: "8"
+        - name: NCCL_DEBUG
+          value: "INFO"
+        - name: NCCL_SOCKET_RCVBUF
+          value: "8388608"
+        - name: NCCL_SOCKET_SNDBUF
+          value: "8388608"
+        - name: NCCL_BUFFSIZE
+          value: "16777216"
+        - name: NCCL_PROTO
+          value: "Simple"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "0"
+        - name: SAFETENSORS_FAST_GPU
+          value: "0"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
+          value: "18000"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+              optional: true
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - name: hyperdisk-model-volume
+          mountPath: /data/model
+          readOnly: true
+        - name: dshm
+          mountPath: /dev/shm
+        - name: sm120-patch
+          mountPath: /patch
+          readOnly: true
+      volumes:
+      - name: hyperdisk-model-volume
+        persistentVolumeClaim:
+          claimName: kimik3-hdml-pvc
+          readOnly: true
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 64Gi
+      - name: sm120-patch
+        configMap:
+          name: sglang-kimi-k3-sm120-patch

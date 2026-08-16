@@ -343,53 +343,6 @@ async function ask() {
   }
 }
 
-/* ------------------------------------------------------- image drawing -- */
-
-async function draw() {
-  const prompt = input.value.trim();
-  if (!prompt) return;
-  $("#empty")?.remove();
-
-  const user = { role: "user", text: prompt, images: [], meta: stamp() };
-  messages.push(user);
-  paint(user);
-  input.value = "";
-  autosize();
-
-  const reply = { role: "assistant", text: "", images: [], made: true, meta: "drawing…" };
-  const row = paint(reply);
-  const body = row.querySelector(".body");
-  busy(true);
-  controller = new AbortController();
-
-  try {
-    const res = await fetch("/api/images", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: controller.signal,
-      body: JSON.stringify({ prompt, size: $("#img-size").value, n: 1 }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `Image server returned ${res.status}.`);
-
-    reply.images = data.images.map((i) => i.url);
-    reply.text = `Drawn with ${data.model}.`;
-    reply.meta = [stamp(), `${(data.elapsed_ms / 1000).toFixed(1)}s`].join("\n");
-    messages.push(reply);
-    save();
-    row.replaceWith(paint(reply));
-    thread.lastElementChild.scrollIntoView({ block: "nearest" });
-  } catch (err) {
-    const fail = document.createElement("div");
-    fail.className = "fail";
-    fail.textContent = err.name === "AbortError" ? "Stopped." : err.message;
-    body.append(fail);
-    row.querySelector(".rail .meta").textContent = stamp();
-  } finally {
-    busy(false);
-    scrollDown();
-  }
-}
 
 function busy(on) {
   sendBtn.hidden = on;
@@ -402,7 +355,7 @@ function busy(on) {
 
 $("#composer").addEventListener("submit", (e) => {
   e.preventDefault();
-  (mode === "image" ? draw : ask)();
+  ask();
 });
 
 stopBtn.onclick = () => controller?.abort();
@@ -430,19 +383,6 @@ document.addEventListener("paste", (e) => {
   });
 });
 
-document.querySelectorAll(".mode-btn").forEach((btn) => {
-  btn.onclick = () => {
-    mode = btn.dataset.mode;
-    document.querySelectorAll(".mode-btn").forEach((b) => b.classList.toggle("is-on", b === btn));
-    document.body.classList.toggle("mode-image", mode === "image");
-    input.placeholder = mode === "image"
-      ? "Describe the image to draw."
-      : "Ask anything. Enter sends, Shift+Enter adds a line.";
-    say(mode === "image" ? `Drawing with ${cfg.image_model}.` : "");
-    input.focus();
-  };
-});
-
 $("#btn-settings").onclick = (e) => {
   const panel = $("#settings");
   panel.hidden = !panel.hidden;
@@ -468,7 +408,6 @@ $("#show-thinking").addEventListener("change", (e) => {
 thread.addEventListener("click", (e) => {
   if (!e.target.classList.contains("starter")) return;
   input.value = e.target.textContent;
-  if (/^draw|illustrat/i.test(input.value) && cfg.image_enabled) $("#mode-image").click();
   autosize();
   input.focus();
 });
@@ -481,11 +420,6 @@ thread.addEventListener("click", (e) => {
     $("#model-tag").textContent = cfg.chat_model;
     $("#temp").value = cfg.default_temperature;
     $("#temp-val").textContent = cfg.default_temperature;
-    if (!cfg.image_enabled) {
-      const btn = $("#mode-image");
-      btn.disabled = true;
-      btn.title = "Set IMAGE_BASE_URL to enable image generation.";
-    }
   } catch {
     say("Cannot load app config.", true);
   }
