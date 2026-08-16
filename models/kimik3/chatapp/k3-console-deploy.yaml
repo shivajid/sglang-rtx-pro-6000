@@ -1,0 +1,1193 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k3-console-config
+  namespace: default
+data:
+  SGLANG_BASE_URL: "http://sglang-kimi-k3-serving.default.svc.cluster.local:30000/v1"
+  CHAT_MODEL: "moonshotai/Kimi-K3"
+  MAX_REQUEST_MB: "24"
+  MAX_IMAGE_MB: "8"
+  READ_TIMEOUT_SECONDS: "900"
+  DEFAULT_TEMPERATURE: "0.6"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k3-console-code
+  namespace: default
+data:
+  main.py: |
+    from __future__ import annotations
+
+    import asyncio
+    import json
+    import os
+    import time
+    from contextlib import asynccontextmanager
+    from typing import Any, AsyncIterator
+
+    import httpx
+    from fastapi import FastAPI, Request
+    from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+    from fastapi.staticfiles import StaticFiles
+    from pydantic import BaseModel, Field
+
+    STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+    def _env(name: str, default: str = "") -> str:
+        return os.environ.get(name, default).strip()
+
+    CHAT_BASE_URL = _env("SGLANG_BASE_URL", "http://sglang-kimi-k3-serving.default.svc.cluster.local:30000/v1").rstrip("/")
+    CHAT_API_KEY = _env("SGLANG_API_KEY")
+    CHAT_MODEL = _env("CHAT_MODEL", "moonshotai/Kimi-K3")
+
+    IMAGE_BASE_URL = _env("IMAGE_BASE_URL").rstrip("/")
+    IMAGE_API_KEY = _env("IMAGE_API_KEY") or CHAT_API_KEY
+    IMAGE_MODEL = _env("IMAGE_MODEL", "Qwen/Qwen-Image")
+
+    MAX_REQUEST_MB = float(_env("MAX_REQUEST_MB", "24"))
+    MAX_IMAGE_MB = float(_env("MAX_IMAGE_MB", "8"))
+    READ_TIMEOUT = float(_env("READ_TIMEOUT_SECONDS", "900"))
+    IMAGE_TIMEOUT = float(_env("IMAGE_TIMEOUT_SECONDS", "600"))
+    DEFAULT_TEMPERATURE = float(_env("DEFAULT_TEMPERATURE", "0.6"))
+    APP_TOKEN = _env("APP_TOKEN")
+
+    _ready_cache: dict[str, Any] = {"at": 0.0, "ok": False, "detail": ""}
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        timeout = httpx.Timeout(connect=10.0, read=READ_TIMEOUT, write=120.0, pool=10.0)
+        limits = httpx.Limits(max_connections=64, max_keepalive_connections=16)
+        app.state.http = httpx.AsyncClient(timeout=timeout, limits=limits)
+        try:
+            yield
+        finally:
+            await app.state.http.aclose()
+
+    app = FastAPI(title="Kimi-K3 Chat", lifespan=lifespan, docs_url=None, redoc_url=None)
+
+    def _headers(api_key: str) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        return headers
+
+    def sse(payload: dict[str, Any]) -> str:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    @app.middleware("http")
+    async def guard(request: Request, call_next):
+        if APP_TOKEN and request.url.path.startswith("/api/"):
+            supplied = request.headers.get("x-app-token", "")
+            if supplied != APP_TOKEN:
+                return JSONResponse({"error": "Not authorised for this app."}, status_code=401)
+        return await call_next(request)
+
+    class ChatRequest(BaseModel):
+        messages: list[dict[str, Any]]
+        model: str | None = None
+        temperature: float = Field(default=DEFAULT_TEMPERATURE, ge=0.0, le=2.0)
+        top_p: float = Field(default=1.0, ge=0.0, le=1.0)
+        max_tokens: int | None = Field(default=None, ge=1, le=262144)
+
+    class ImageRequest(BaseModel):
+        prompt: str = Field(min_length=1, max_length=8000)
+        size: str = "1024x1024"
+        n: int = Field(default=1, ge=1, le=4)
+        model: str | None = None
+        seed: int | None = None
+
+    @app.get("/healthz")
+    async def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/readyz")
+    async def readyz() -> JSONResponse:
+        now = time.monotonic()
+        if now - _ready_cache["at"] < 10.0:
+            cached = _ready_cache
+            return JSONResponse(
+                {"status": "ok" if cached["ok"] else "upstream unavailable", "detail": cached["detail"]},
+                status_code=200 if cached["ok"] else 503,
+            )
+        detail, ok = "", False
+        try:
+            resp = await app.state.http.get(
+                f"{CHAT_BASE_URL}/models", headers=_headers(CHAT_API_KEY), timeout=5.0
+            )
+            ok = resp.status_code < 500
+            detail = f"chat upstream returned {resp.status_code}"
+        except Exception as exc:
+            detail = f"chat upstream unreachable: {exc.__class__.__name__}"
+        _ready_cache.update(at=now, ok=ok, detail=detail)
+        return JSONResponse({"status": "ok" if ok else "upstream unavailable", "detail": detail},
+                            status_code=200 if ok else 503)
+
+    @app.get("/api/config")
+    async def config() -> dict[str, Any]:
+        return {
+            "chat_model": CHAT_MODEL,
+            "image_model": IMAGE_MODEL if IMAGE_BASE_URL else None,
+            "image_enabled": bool(IMAGE_BASE_URL),
+            "max_image_mb": MAX_IMAGE_MB,
+            "default_temperature": DEFAULT_TEMPERATURE,
+        }
+
+    @app.get("/api/models")
+    async def models() -> JSONResponse:
+        try:
+            resp = await app.state.http.get(
+                f"{CHAT_BASE_URL}/models", headers=_headers(CHAT_API_KEY), timeout=10.0
+            )
+            return JSONResponse(resp.json(), status_code=resp.status_code)
+        except Exception as exc:
+            return JSONResponse({"error": f"Model list unavailable: {exc}"}, status_code=502)
+
+    @app.post("/api/chat")
+    async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
+        body = {
+            "model": req.model or CHAT_MODEL,
+            "messages": req.messages,
+            "temperature": req.temperature,
+            "top_p": req.top_p,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if req.max_tokens:
+            body["max_tokens"] = req.max_tokens
+
+        raw = json.dumps(body)
+        if len(raw.encode()) > MAX_REQUEST_MB * 1024 * 1024:
+            async def too_big() -> AsyncIterator[str]:
+                yield sse({"type": "error", "message":
+                           f"Conversation exceeds the {MAX_REQUEST_MB:g} MB request limit. "
+                           f"Remove some attached images or start a new chat."})
+            return StreamingResponse(too_big(), media_type="text/event-stream")
+
+        async def relay() -> AsyncIterator[str]:
+            started = time.monotonic()
+            first_token_ms: float | None = None
+            usage: dict[str, Any] | None = None
+            try:
+                async with app.state.http.stream(
+                    "POST", f"{CHAT_BASE_URL}/chat/completions",
+                    content=raw, headers=_headers(CHAT_API_KEY),
+                ) as resp:
+                    if resp.status_code >= 400:
+                        detail = (await resp.aread()).decode(errors="replace")[:600]
+                        yield sse({"type": "error",
+                                   "message": f"SGLang returned {resp.status_code}. {detail}"})
+                        return
+                    async for line in resp.aiter_lines():
+                        if await request.is_disconnected():
+                            return
+                        if not line or not line.startswith("data:"):
+                            continue
+                        payload = line[5:].strip()
+                        if payload == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(payload)
+                        except json.JSONDecodeError:
+                            continue
+                        if chunk.get("usage"):
+                            usage = chunk["usage"]
+                        choices = chunk.get("choices") or []
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta") or {}
+                        thinking = delta.get("reasoning_content")
+                        if thinking:
+                            yield sse({"type": "reasoning", "text": thinking})
+                        text = delta.get("content")
+                        if text:
+                            if first_token_ms is None:
+                                first_token_ms = (time.monotonic() - started) * 1000
+                            yield sse({"type": "delta", "text": text})
+                        if choices[0].get("finish_reason") == "length":
+                            yield sse({"type": "notice",
+                                       "message": "Output stopped at the token limit."})
+            except httpx.ReadTimeout:
+                yield sse({"type": "error", "message":
+                           f"No response from SGLang within {READ_TIMEOUT:g}s."})
+                return
+            except httpx.HTTPError as exc:
+                yield sse({"type": "error",
+                           "message": f"Cannot reach SGLang at {CHAT_BASE_URL}: {exc}"})
+                return
+            except asyncio.CancelledError:
+                raise
+            yield sse({
+                "type": "done",
+                "usage": usage,
+                "elapsed_ms": round((time.monotonic() - started) * 1000),
+                "ttft_ms": round(first_token_ms) if first_token_ms else None,
+            })
+
+        return StreamingResponse(
+            relay(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache, no-transform",
+                     "X-Accel-Buffering": "no",
+                     "Connection": "keep-alive"},
+        )
+
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.get("/")
+    async def index() -> FileResponse:
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k3-console-static
+  namespace: default
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="en">
+    <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Kimi-K3 · console</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231F5E56'/><rect x='8' y='14' width='16' height='4' fill='%23E9EBE4'/></svg>" />
+    </head>
+    <body>
+    <header class="bar">
+      <div class="bar-id">
+        <span class="dot" id="status-dot" title="Checking upstream"></span>
+        <span class="wordmark">K3 console</span>
+        <span class="tag" id="model-tag">connecting…</span>
+      </div>
+      <div class="bar-actions">
+        <button id="btn-settings" class="ghost" aria-expanded="false">Settings</button>
+        <button id="btn-new" class="ghost">New chat</button>
+      </div>
+    </header>
+
+    <section id="settings" class="settings" hidden>
+      <label class="field wide">
+        <span>System prompt</span>
+        <textarea id="sys-prompt" rows="2" placeholder="Optional. Sets the model's standing instructions."></textarea>
+      </label>
+      <label class="field">
+        <span>Temperature <b id="temp-val">0.6</b></span>
+        <input id="temp" type="range" min="0" max="1.5" step="0.05" value="0.6" />
+      </label>
+      <label class="field">
+        <span>Max output tokens</span>
+        <input id="max-tokens" type="number" min="64" max="262144" step="64" placeholder="server default" />
+      </label>
+      <label class="field">
+        <span>Image size</span>
+        <select id="img-size">
+          <option>1024x1024</option>
+          <option>1328x1328</option>
+          <option>1280x720</option>
+          <option>720x1280</option>
+          <option>512x512</option>
+        </select>
+      </label>
+      <label class="field check">
+        <input id="show-thinking" type="checkbox" checked />
+        <span>Show reasoning traces</span>
+      </label>
+    </section>
+
+    <main id="thread" class="thread" aria-live="polite">
+      <div class="empty" id="empty">
+        <h1>Talk to Kimi&#8209;K3.</h1>
+        <p>Attach an image and ask about it, or switch the composer to <b>Generate image</b> to draw one.</p>
+        <div class="starters">
+          <button class="starter">Read this screenshot and list every error you can see.</button>
+          <button class="starter">Summarise this diagram for someone who has not seen it.</button>
+          <button class="starter">Draw a cutaway of a GPU server rack, technical illustration.</button>
+        </div>
+      </div>
+    </main>
+
+    <form id="composer" class="composer" autocomplete="off">
+      <div class="mode" role="tablist" aria-label="Composer mode">
+        <button type="button" class="mode-btn is-on" data-mode="chat" role="tab">Chat</button>
+        <button type="button" class="mode-btn" data-mode="image" role="tab" id="mode-image">Generate image</button>
+      </div>
+      <div id="tray" class="tray" hidden></div>
+      <div class="input-row">
+        <label class="attach" title="Attach images">
+          <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M21 11.5 12.5 20a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="sr">Attach images</span>
+        </label>
+        <textarea id="input" rows="1" placeholder="Ask anything. Enter sends, Shift+Enter adds a line."></textarea>
+        <button id="send" type="submit" class="send">Send</button>
+        <button id="stop" type="button" class="send stop" hidden>Stop</button>
+      </div>
+      <p class="hint" id="hint"></p>
+    </form>
+
+    <script src="/static/app.js"></script>
+    </body>
+    </html>
+
+  styles.css: |
+    :root {
+      --paper: #E9EBE4;
+      --panel: #F8F9F5;
+      --ink: #171C1A;
+      --muted: #6C7570;
+      --line: #CFD4CA;
+      --pine: #1F5E56;
+      --ochre: #8A5A00;
+      --alarm: #9B2C2C;
+      --radius: 10px;
+      --gutter: 92px;
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      --sans: ui-sans-serif, system-ui, "Segoe UI", Inter, Roboto, "Helvetica Neue", sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #121513;
+        --panel: #1A1E1B;
+        --ink: #E6EAE2;
+        --muted: #8A948D;
+        --line: #2C322D;
+        --pine: #74C3B1;
+        --ochre: #D3A44A;
+        --alarm: #E8817B;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    body {
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      height: 100dvh;
+    }
+
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+    .bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .bar-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+    .wordmark {
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .tag {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 9px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 42vw;
+    }
+
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--muted) 22%, transparent);
+    }
+    .dot.ok { background: var(--pine); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pine) 22%, transparent); }
+    .dot.down { background: var(--alarm); box-shadow: 0 0 0 3px color-mix(in srgb, var(--alarm) 22%, transparent); }
+
+    .bar-actions { display: flex; gap: 6px; }
+
+    button { font: inherit; cursor: pointer; }
+
+    .ghost {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 4px 9px;
+    }
+    .ghost:hover { color: var(--ink); border-color: var(--line); background: var(--panel); }
+
+    .settings {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      font-family: var(--mono);
+      font-size: 11.5px;
+    }
+    .settings .wide { grid-column: 1 / -1; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field.check { flex-direction: row; align-items: center; gap: 8px; grid-column: 1 / -1; }
+    .field span { color: var(--muted); }
+    .field input, .field select, .field textarea {
+      font: inherit;
+      color: inherit;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+
+    .thread {
+      overflow-y: auto;
+      padding: 24px 18px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .empty {
+      margin: auto;
+      text-align: center;
+      max-width: 480px;
+      color: var(--muted);
+    }
+    .empty h1 { color: var(--ink); font-size: 22px; margin: 0 0 6px; font-weight: 500; }
+    .empty p { margin: 0 0 20px; font-size: 14px; }
+    .starters { display: flex; flex-direction: column; gap: 8px; }
+    .starter {
+      font: inherit;
+      font-size: 13px;
+      text-align: left;
+      padding: 9px 13px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      color: var(--ink);
+    }
+    .starter:hover { border-color: var(--pine); }
+
+    .msg { display: grid; grid-template-columns: var(--gutter) 1fr; gap: 14px; }
+    .rail {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+      padding-top: 4px;
+      user-select: none;
+      white-space: pre-line;
+      text-align: right;
+    }
+    .rail .who { color: var(--ink); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+
+    .body { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+    .prose { white-space: pre-wrap; word-break: break-word; }
+    .prose p { margin: 0 0 0.8em; }
+    .prose p:last-child { margin-bottom: 0; }
+    .prose pre {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 12.5px;
+    }
+    .prose code { font-family: var(--mono); font-size: 0.9em; }
+
+    .think {
+      font-family: var(--mono);
+      font-size: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    .think summary { cursor: pointer; color: var(--muted); }
+    .trace { margin-top: 8px; white-space: pre-wrap; color: var(--muted); }
+
+    .shots { display: flex; flex-wrap: wrap; gap: 8px; }
+    .shots img { max-width: 220px; max-height: 220px; border-radius: 6px; border: 1px solid var(--line); object-fit: cover; }
+    .shots.made img { max-width: 480px; max-height: 480px; }
+
+    .rowtools { display: flex; gap: 6px; }
+    .rowtools button {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      padding: 2px 7px;
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--muted);
+    }
+    .rowtools button:hover { color: var(--ink); border-color: var(--ink); }
+
+    .fail { color: var(--alarm); font-family: var(--mono); font-size: 12px; }
+
+    .cursor {
+      display: inline-block;
+      width: 7px; height: 1.1em;
+      vertical-align: -2px;
+      background: var(--pine);
+      animation: blink 0.9s infinite;
+      margin-left: 2px;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .composer {
+      border-top: 1px solid var(--line);
+      background: var(--panel);
+      padding: 12px 18px 16px;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mode { display: flex; gap: 6px; font-family: var(--mono); font-size: 11px; }
+    .mode-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 3px 8px;
+      color: var(--muted);
+    }
+    .mode-btn.is-on { background: var(--paper); border-color: var(--line); color: var(--ink); }
+
+    .tray { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip { position: relative; width: 48px; height: 48px; }
+    .chip img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+    .chip button {
+      position: absolute; top: -5px; right: -5px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--ink); color: var(--paper);
+      border: none; font-size: 10px; line-height: 1; padding: 0;
+    }
+
+    .input-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+    }
+    .input-row.dragging { border-color: var(--pine); outline: 2px solid var(--pine); }
+    .attach { color: var(--muted); display: flex; align-items: center; padding: 4px; cursor: pointer; }
+    .attach:hover { color: var(--ink); }
+    textarea#input {
+      flex: 1;
+      border: none;
+      background: transparent;
+      font: inherit;
+      color: inherit;
+      resize: none;
+      max-height: 220px;
+      outline: none;
+      padding: 2px 0;
+    }
+    .send {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--pine);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+    }
+    .send.stop { background: var(--alarm); }
+    .hint { margin: 0; font-family: var(--mono); font-size: 11px; color: var(--muted); min-height: 14px; }
+    .hint.bad { color: var(--alarm); }
+
+  app.js: |
+    const $ = (sel) => document.querySelector(sel);
+    const thread = $("#thread");
+    const input = $("#input");
+    const tray = $("#tray");
+    const hint = $("#hint");
+    const sendBtn = $("#send");
+    const stopBtn = $("#stop");
+    const inputRow = document.querySelector(".input-row");
+
+    const MAX_EDGE = 1568;
+    const STORE_KEY = "k3-console-v1";
+
+    let cfg = { chat_model: "Kimi-K3", image_enabled: false, max_image_mb: 8, default_temperature: 0.6 };
+    let messages = [];
+    let pending = [];
+    let mode = "chat";
+    let controller = null;
+
+    const esc = (s) => s.replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    function render(md) {
+      const blocks = [];
+      let text = md.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+        blocks.push(`<pre><code data-lang="${esc(lang)}">${esc(code.replace(/\n$/, ""))}</code></pre>`);
+        return `\u0000${blocks.length - 1}\u0000`;
+      });
+      text = esc(text)
+        .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+        .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+          '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+      const out = [];
+      let list = null;
+      for (const line of text.split("\n")) {
+        const bullet = line.match(/^\s*[-*]\s+(.*)/);
+        const numbered = line.match(/^\s*(\d+)\.\s+(.*)/);
+        const heading = line.match(/^(#{1,4})\s+(.*)/);
+        if (bullet || numbered) {
+          const want = bullet ? "ul" : "ol";
+          if (list !== want) { if (list) out.push(`</${list}>`); out.push(`<${want}>`); list = want; }
+          out.push(`<li>${(bullet ? bullet[1] : numbered[2])}</li>`);
+          continue;
+        }
+        if (list) { out.push(`</${list}>`); list = null; }
+        if (heading) out.push(`<h3>${heading[2]}</h3>`);
+        else if (line.trim() === "") out.push("");
+        else out.push(`<p>${line}</p>`);
+      }
+      if (list) out.push(`</${list}>`);
+      return out.join("\n").replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[+i]);
+    }
+
+    const stamp = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    function say(text, bad = false) {
+      hint.textContent = text;
+      hint.classList.toggle("bad", bad);
+    }
+
+    function autosize() {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 220) + "px";
+    }
+
+    function scrollDown(force = false) {
+      const near = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 160;
+      if (near || force) thread.scrollTop = thread.scrollHeight;
+    }
+
+    function save() {
+      const trim = (keepImages) => JSON.stringify(messages.map((m) => ({
+        ...m, images: keepImages ? m.images : [], reasoning: (m.reasoning || "").slice(0, 4000),
+      })));
+      try {
+        localStorage.setItem(STORE_KEY, trim(true));
+      } catch {
+        try { localStorage.setItem(STORE_KEY, trim(false)); } catch { }
+      }
+    }
+
+    function restore() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "[]");
+        if (Array.isArray(saved) && saved.length) {
+          messages = saved;
+          messages.forEach(paint);
+          $("#empty")?.remove();
+          scrollDown(true);
+        }
+      } catch { }
+    }
+
+    async function shrink(file) {
+      const limit = cfg.max_image_mb * 1024 * 1024;
+      if (file.size > limit * 4) throw new Error(`${file.name} is too large to process.`);
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+      const w = Math.round(bitmap.width * scale);
+      const h = Math.round(bitmap.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, w, h);
+      bitmap.close?.();
+      let quality = 0.88;
+      let url = canvas.toDataURL("image/jpeg", quality);
+      while (url.length * 0.75 > limit && quality > 0.4) {
+        quality -= 0.12;
+        url = canvas.toDataURL("image/jpeg", quality);
+      }
+      return url;
+    }
+
+    async function stage(files) {
+      for (const file of files) {
+        if (!file.type.startsWith("image/")) continue;
+        try {
+          pending.push(await shrink(file));
+        } catch (err) {
+          say(err.message, true);
+        }
+      }
+      paintTray();
+    }
+
+    function paintTray() {
+      tray.innerHTML = "";
+      tray.hidden = pending.length === 0;
+      pending.forEach((url, i) => {
+        const chip = document.createElement("div");
+        chip.className = "chip";
+        chip.innerHTML = `<img src="${url}" alt="Attachment ${i + 1}"><button type="button" aria-label="Remove attachment">×</button>`;
+        chip.querySelector("button").onclick = () => { pending.splice(i, 1); paintTray(); };
+        tray.append(chip);
+      });
+    }
+
+    function paint(msg) {
+      const row = document.createElement("article");
+      row.className = `msg ${msg.role}`;
+      const who = msg.role === "user" ? "you" : msg.role === "assistant" ? "k3" : msg.role;
+      row.innerHTML = `
+        <div class="rail"><span class="who">${who}</span><span class="meta">${msg.meta || stamp()}</span></div>
+        <div class="body"></div>`;
+      const body = row.querySelector(".body");
+
+      if (msg.reasoning) body.append(traceNode(msg.reasoning));
+      if (msg.images?.length) body.append(shotsNode(msg.images, msg.made));
+      const prose = document.createElement("div");
+      prose.className = "prose";
+      prose.innerHTML = render(msg.text || "");
+      body.append(prose);
+
+      const tools = document.createElement("div");
+      tools.className = "rowtools";
+      if (msg.text) {
+        const copy = document.createElement("button");
+        copy.textContent = "Copy";
+        copy.onclick = async () => {
+          await navigator.clipboard.writeText(msg.text);
+          copy.textContent = "Copied";
+          setTimeout(() => (copy.textContent = "Copy"), 1200);
+        };
+        tools.append(copy);
+      }
+      if (msg.made && msg.images?.length) {
+        const reuse = document.createElement("button");
+        reuse.textContent = "Ask K3 about this";
+        reuse.onclick = () => {
+          pending.push(...msg.images);
+          paintTray();
+          document.querySelector('.mode-btn[data-mode="chat"]').click();
+          say("Image attached to your next message.");
+        };
+        tools.append(reuse);
+      }
+      if (tools.childElementCount) body.append(tools);
+      thread.append(row);
+      return row;
+    }
+
+    function traceNode(text) {
+      const box = document.createElement("details");
+      box.className = "think";
+      box.open = $("#show-thinking").checked;
+      box.innerHTML = `<summary>Reasoning</summary><div class="trace"></div>`;
+      box.querySelector(".trace").textContent = text;
+      return box;
+    }
+
+    function shotsNode(urls, made) {
+      const wrap = document.createElement("div");
+      wrap.className = `shots${made ? " made" : ""}`;
+      urls.forEach((url, i) => {
+        const img = new Image();
+        img.src = url;
+        img.alt = made ? `Generated image ${i + 1}` : `Attached image ${i + 1}`;
+        img.loading = "lazy";
+        wrap.append(img);
+      });
+      return wrap;
+    }
+
+    function payload() {
+      const out = [];
+      const system = $("#sys-prompt").value.trim();
+      if (system) out.push({ role: "system", content: system });
+      for (const m of messages) {
+        if (m.role === "assistant" && m.made) {
+          out.push({ role: "assistant", content: m.text || "[image generated]" });
+          continue;
+        }
+        if (m.images?.length) {
+          const parts = m.images.map((url) => ({ type: "image_url", image_url: { url } }));
+          if (m.text) parts.push({ type: "text", text: m.text });
+          out.push({ role: m.role, content: parts });
+        } else {
+          out.push({ role: m.role, content: m.text });
+        }
+      }
+      return out;
+    }
+
+    async function ask() {
+      const text = input.value.trim();
+      if (!text && pending.length === 0) return;
+
+      $("#empty")?.remove();
+      const user = { role: "user", text, images: pending, meta: stamp() };
+      messages.push(user);
+      paint(user);
+      pending = [];
+      paintTray();
+      input.value = "";
+      autosize();
+      scrollDown(true);
+
+      const reply = { role: "assistant", text: "", reasoning: "", images: [], meta: "streaming…" };
+      const row = paint(reply);
+      const body = row.querySelector(".body");
+      const prose = row.querySelector(".prose");
+      const meta = row.querySelector(".rail .meta");
+      const cursor = document.createElement("span");
+      cursor.className = "cursor";
+      prose.append(cursor);
+      let trace = null;
+
+      busy(true);
+      controller = new AbortController();
+      const maxTokens = parseInt($("#max-tokens").value, 10);
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            messages: payload(),
+            temperature: parseFloat($("#temp").value),
+            ...(maxTokens ? { max_tokens: maxTokens } : {}),
+          }),
+        });
+        if (!res.ok || !res.body) throw new Error(`Gateway returned ${res.status}.`);
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const frames = buffer.split("\n\n");
+          buffer = frames.pop();
+          for (const frame of frames) {
+            const line = frame.split("\n").find((l) => l.startsWith("data:"));
+            if (!line) continue;
+            const evt = JSON.parse(line.slice(5).trim());
+
+            if (evt.type === "reasoning") {
+              reply.reasoning += evt.text;
+              if (!trace) { trace = traceNode(""); body.prepend(trace); }
+              trace.querySelector(".trace").textContent = reply.reasoning;
+            } else if (evt.type === "delta") {
+              reply.text += evt.text;
+              prose.innerHTML = render(reply.text);
+              prose.append(cursor);
+              scrollDown();
+            } else if (evt.type === "notice") {
+              say(evt.message);
+            } else if (evt.type === "error") {
+              throw new Error(evt.message);
+            } else if (evt.type === "done") {
+              const tok = evt.usage?.completion_tokens;
+              const rate = tok && evt.elapsed_ms ? (tok / (evt.elapsed_ms / 1000)).toFixed(1) : null;
+              reply.meta = [stamp(),
+                tok ? `${tok} tok` : null,
+                rate ? `${rate} tok/s` : null,
+                evt.ttft_ms ? `ttft ${evt.ttft_ms}ms` : null,
+              ].filter(Boolean).join("\n");
+            }
+          }
+        }
+        cursor.remove();
+        meta.textContent = reply.meta === "streaming…" ? stamp() : reply.meta;
+        messages.push(reply);
+        save();
+        row.replaceWith(paint(reply));
+      } catch (err) {
+        cursor.remove();
+        meta.textContent = stamp();
+        if (err.name === "AbortError") {
+          if (reply.text) { messages.push(reply); save(); }
+          say("Stopped.");
+        } else {
+          const fail = document.createElement("div");
+          fail.className = "fail";
+          fail.textContent = err.message;
+          body.append(fail);
+          say(err.message, true);
+        }
+      } finally {
+        busy(false);
+        scrollDown();
+      }
+    }
+
+    async function draw() {
+      const prompt = input.value.trim();
+      if (!prompt) return;
+      $("#empty")?.remove();
+
+      const user = { role: "user", text: prompt, images: [], meta: stamp() };
+      messages.push(user);
+      paint(user);
+      input.value = "";
+      autosize();
+
+      const reply = { role: "assistant", text: "", images: [], made: true, meta: "drawing…" };
+      const row = paint(reply);
+      const body = row.querySelector(".body");
+      busy(true);
+      controller = new AbortController();
+
+      try {
+        const res = await fetch("/api/images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({ prompt, size: $("#img-size").value, n: 1 }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Image server returned ${res.status}.`);
+
+        reply.images = data.images.map((i) => i.url);
+        reply.text = `Drawn with ${data.model}.`;
+        reply.meta = [stamp(), `${(data.elapsed_ms / 1000).toFixed(1)}s`].join("\n");
+        messages.push(reply);
+        save();
+        row.replaceWith(paint(reply));
+        thread.lastElementChild.scrollIntoView({ block: "nearest" });
+      } catch (err) {
+        const fail = document.createElement("div");
+        fail.className = "fail";
+        fail.textContent = err.name === "AbortError" ? "Stopped." : err.message;
+        body.append(fail);
+        row.querySelector(".rail .meta").textContent = stamp();
+      } finally {
+        busy(false);
+        scrollDown();
+      }
+    }
+
+    function busy(on) {
+      sendBtn.hidden = on;
+      stopBtn.hidden = !on;
+      input.disabled = on;
+      if (!on) { controller = null; input.focus(); }
+    }
+
+    $("#composer").addEventListener("submit", (e) => {
+      e.preventDefault();
+      (mode === "image" ? draw : ask)();
+    });
+
+    stopBtn.onclick = () => controller?.abort();
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        $("#composer").requestSubmit();
+      }
+    });
+    input.addEventListener("input", autosize);
+
+    $("#file").addEventListener("change", (e) => { stage(e.target.files); e.target.value = ""; });
+
+    document.addEventListener("paste", (e) => {
+      const files = [...(e.clipboardData?.files || [])];
+      if (files.length) { e.preventDefault(); stage(files); }
+    });
+
+    ["dragover", "dragleave", "drop"].forEach((type) => {
+      inputRow.addEventListener(type, (e) => {
+        e.preventDefault();
+        inputRow.classList.toggle("dragging", type === "dragover");
+        if (type === "drop") stage(e.dataTransfer.files);
+      });
+    });
+
+    document.querySelectorAll(".mode-btn").forEach((btn) => {
+      btn.onclick = () => {
+        mode = btn.dataset.mode;
+        document.querySelectorAll(".mode-btn").forEach((b) => b.classList.toggle("is-on", b === btn));
+        document.body.classList.toggle("mode-image", mode === "image");
+        input.placeholder = mode === "image"
+          ? "Describe the image to draw."
+          : "Ask anything. Enter sends, Shift+Enter adds a line.";
+        say(mode === "image" ? `Drawing with ${cfg.image_model}.` : "");
+        input.focus();
+      };
+    });
+
+    $("#btn-settings").onclick = (e) => {
+      const panel = $("#settings");
+      panel.hidden = !panel.hidden;
+      e.currentTarget.setAttribute("aria-expanded", String(!panel.hidden));
+    };
+
+    $("#btn-new").onclick = () => {
+      if (messages.length && !confirm("Clear this conversation?")) return;
+      messages = [];
+      pending = [];
+      paintTray();
+      localStorage.removeItem(STORE_KEY);
+      thread.innerHTML = "";
+      location.reload();
+    };
+
+    $("#temp").addEventListener("input", (e) => ($("#temp-val").textContent = e.target.value));
+
+    $("#show-thinking").addEventListener("change", (e) => {
+      document.querySelectorAll("details.think").forEach((d) => (d.open = e.target.checked));
+    });
+
+    thread.addEventListener("click", (e) => {
+      if (!e.target.classList.contains("starter")) return;
+      input.value = e.target.textContent;
+      if (/^draw|illustrat/i.test(input.value) && cfg.image_enabled) $("#mode-image").click();
+      autosize();
+      input.focus();
+    });
+
+    (async function start() {
+      try {
+        cfg = await (await fetch("/api/config")).json();
+        $("#model-tag").textContent = cfg.chat_model;
+        $("#temp").value = cfg.default_temperature;
+        $("#temp-val").textContent = cfg.default_temperature;
+        if (!cfg.image_enabled) {
+          const btn = $("#mode-image");
+          btn.disabled = true;
+          btn.title = "Set IMAGE_BASE_URL to enable image generation.";
+        }
+      } catch {
+        say("Cannot load app config.", true);
+      }
+      try {
+        const ready = await fetch("/readyz");
+        $("#status-dot").className = `dot ${ready.ok ? "ok" : "down"}`;
+        $("#status-dot").title = ready.ok ? "SGLang reachable" : "SGLang unreachable";
+        if (!ready.ok) say("SGLang is not answering. Check SGLANG_BASE_URL and the model server.", true);
+      } catch {
+        $("#status-dot").className = "dot down";
+      }
+      restore();
+      autosize();
+      input.focus();
+    })();
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k3-console
+  namespace: default
+  labels:
+    app: k3-console
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k3-console
+  template:
+    metadata:
+      labels:
+        app: k3-console
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: cpu-64-pool
+      containers:
+      - name: k3-console
+        image: lmsysorg/sglang:latest
+        command:
+        - python3
+        - -m
+        - uvicorn
+        - main:app
+        - --host
+        - 0.0.0.0
+        - --port
+        - "8080"
+        workingDir: /app
+        envFrom:
+        - configMapRef:
+            name: k3-console-config
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "2"
+            memory: "1Gi"
+        volumeMounts:
+        - name: code-vol
+          mountPath: /app/main.py
+          subPath: main.py
+        - name: static-vol
+          mountPath: /app/static
+      volumes:
+      - name: code-vol
+        configMap:
+          name: k3-console-code
+      - name: static-vol
+        configMap:
+          name: k3-console-static
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k3-console
+  namespace: default
+  labels:
+    app: k3-console
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30888
+    name: http
+  selector:
+    app: k3-console

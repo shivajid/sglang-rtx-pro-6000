@@ -4,6 +4,10 @@ SGLang serving recipe, Hyperdisk ML multi-node weight provisioning, and comprehe
 
 ---
 
+## Note
+
+The server can take up to 30 mins to start. **Also note that on first request, it will kick of a pre-compilations. This can take upto another 10 mins to finish.** Post that it should respond in a normal time frame. G4 nodes are connected to each other over standard ethernet network. For better performance please use GB200 or GB300.
+
 ## Configuration
 
 | Item | Value |
