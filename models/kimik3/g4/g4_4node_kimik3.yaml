@@ -13,7 +13,7 @@ spec:
     name: kimik3-hdml-pvc
   csi:
     driver: pd.csi.storage.gke.io
-    volumeHandle: projects/northam-ce-mlai-tpu/zones/us-east5-a/disks/kimik3-hyperdisk-ml
+    volumeHandle: projects/<YOUR_PROJECT_ID>/zones/<YOUR_ZONE>/disks/kimik3-hyperdisk-ml
     fsType: ext4
     readOnly: true
 ---
@@ -37,7 +37,7 @@ metadata:
   name: sglang-sa
   namespace: default
   annotations:
-    iam.gke.io/gcp-service-account: workload-identity-gcp-sa@northam-ce-mlai-tpu.iam.gserviceaccount.com
+    iam.gke.io/gcp-service-account: <YOUR_GCP_SA>@<YOUR_PROJECT_ID>.iam.gserviceaccount.com
 ---
 # Headless Service for distributed multi-node master discovery (Pod Index 0 / Node Rank 0)
 apiVersion: v1
@@ -203,7 +203,7 @@ spec:
       hostIPC: true
       dnsPolicy: ClusterFirstWithHostNet
       nodeSelector:
-        cloud.google.com/gke-nodepool: g4-384-pool-pm-crwd
+        cloud.google.com/gke-nodepool: <YOUR_G4_NODEPOOL>
       tolerations:
       - key: "nvidia.com/gpu"
         operator: "Exists"

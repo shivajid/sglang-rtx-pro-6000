@@ -1,0 +1,187 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sglang-bench-sweep-script
+  namespace: default
+data:
+  sglang_bench_sweep.py: |
+    import argparse
+    import subprocess
+    import json
+    import time
+    import os
+    import sys
+
+    def parse_jsonl(filepath):
+        if not os.path.exists(filepath):
+            return None
+        with open(filepath, "r") as f:
+            lines = [line.strip() for line in f if line.strip()]
+            if lines:
+                return json.loads(lines[-1])
+        return None
+
+    def main():
+        parser = argparse.ArgumentParser(description="Run SGLang bench_serving sweep")
+        parser.add_argument("--host", type=str, default="sglang-kimi-k3-serving.default.svc.cluster.local", help="SGLang server host")
+        parser.add_argument("--port", type=int, default=30000, help="SGLang server port")
+        parser.add_argument("--model", type=str, default="moonshotai/Kimi-K3", help="Model name")
+        parser.add_argument("--tokenizer", type=str, default="gpt2", help="Tokenizer repo for benchmark client token counting")
+        parser.add_argument("--concurrencies", type=int, nargs="+", default=[8, 16, 32], help="Concurrencies to sweep")
+        parser.add_argument("--output-dir", type=str, default="/tmp/bench_results", help="Directory to save JSONL files")
+        parser.add_argument("--prompts-per-concurrency-multiplier", type=int, default=1, help="Multiplier for total prompts")
+        args = parser.parse_args()
+
+        os.makedirs(args.output_dir, exist_ok=True)
+
+        scenarios = [
+            {"name": "1k_500", "input_len": 1000, "output_len": 500},
+            {"name": "1k_1k",  "input_len": 1000, "output_len": 1000},
+            {"name": "8k_1k",  "input_len": 8000, "output_len": 1000},
+            {"name": "1k_8k",  "input_len": 1000, "output_len": 8000},
+        ]
+
+        print("=" * 80)
+        print("🚀 SGLANG OFFICIAL BENCHMARK SWEEP (python3 -m sglang.bench_serving)")
+        print(f"📍 Host: {args.host}:{args.port}")
+        print(f"🤖 Model: {args.model}")
+        print(f"🔤 Tokenizer: {args.tokenizer}")
+        print(f"👥 Concurrencies: {args.concurrencies}")
+        print(f"📊 Scenarios: {[s['name'] for s in scenarios]}")
+        print("=" * 80)
+
+        results_table = []
+
+        for sc in scenarios:
+            sc_name = sc["name"]
+            in_len = sc["input_len"]
+            out_len = sc["output_len"]
+
+            for conc in args.concurrencies:
+                num_prompts = conc * args.prompts_per_concurrency_multiplier
+                out_file = os.path.join(args.output_dir, f"{sc_name}_c{conc}.jsonl")
+                if os.path.exists(out_file):
+                    os.remove(out_file)
+
+                cmd = [
+                    sys.executable, "-m", "sglang.bench_serving",
+                    "--backend", "sglang",
+                    "--host", args.host,
+                    "--port", str(args.port),
+                    "--model", args.model,
+                    "--tokenizer", args.tokenizer,
+                    "--dataset-name", "random",
+                    "--random-input-len", str(in_len),
+                    "--random-output-len", str(out_len),
+                    "--random-range-ratio", "0.0",
+                    "--num-prompts", str(num_prompts),
+                    "--max-concurrency", str(conc),
+                    "--output-file", out_file,
+                    "--output-details"
+                ]
+
+                print(f"\n>>> Executing: Scenario={sc_name} (In={in_len}, Out={out_len}) | Concurrency={conc} | Prompts={num_prompts} <<<")
+                print("Command:", " ".join(cmd))
+                
+                start_t = time.time()
+                try:
+                    proc = subprocess.run(cmd, check=False)
+                    elapsed = time.time() - start_t
+                    data = parse_jsonl(out_file)
+                    if data:
+                        res_row = {
+                            "scenario": sc_name,
+                            "in_out": f"{in_len}/{out_len}",
+                            "concurrency": conc,
+                            "num_prompts": num_prompts,
+                            "completed": data.get("completed", 0),
+                            "duration_s": round(data.get("duration", elapsed), 2),
+                            "output_throughput": round(data.get("output_throughput", 0.0), 2),
+                            "total_throughput": round(data.get("total_throughput", 0.0), 2),
+                            "mean_ttft_ms": round(data.get("mean_ttft_ms", 0.0), 1),
+                            "median_ttft_ms": round(data.get("median_ttft_ms", 0.0), 1),
+                            "p99_ttft_ms": round(data.get("p99_ttft_ms", 0.0), 1),
+                            "mean_tpot_ms": round(data.get("mean_tpot_ms", 0.0), 1),
+                            "median_e2e_s": round(data.get("median_e2e_latency_ms", 0.0) / 1000.0, 2),
+                            "p99_e2e_s": round(data.get("p99_e2e_latency_ms", 0.0) / 1000.0, 2),
+                        }
+                        results_table.append(res_row)
+                        print(f"✅ Finished in {res_row['duration_s']}s | Output Throughput: {res_row['output_throughput']} tok/s | Median TTFT: {res_row['median_ttft_ms']} ms")
+                    else:
+                        print(f"⚠️ Warning: No JSONL output produced for {sc_name}_c{conc}")
+                except Exception as e:
+                    print(f"❌ Execution failed: {e}")
+
+                time.sleep(2)
+
+        print("\n" + "=" * 115)
+        print("📊 COMPLETE SGLANG BENCH_SERVING SWEEP RESULTS")
+        print("=" * 115)
+        header = f"| {'Scenario':<8} | {'In/Out':<10} | {'Conc':<4} | {'Reqs':<4} | {'TTFT P50':<10} | {'TTFT P99':<10} | {'TPOT Mean':<10} | {'E2E P50':<9} | {'Out TPS':<10} | {'Total TPS':<10} |"
+        divider = f"|{'-'*10}|{'-'*12}|{'-'*6}|{'-'*6}|{'-'*12}|{'-'*12}|{'-'*12}|{'-'*11}|{'-'*12}|{'-'*12}|"
+        print(header)
+        print(divider)
+        for r in results_table:
+            print(f"| {r['scenario']:<8} | {r['in_out']:<10} | {r['concurrency']:<4} | {r['completed']:<4} | {r['median_ttft_ms']:>7.1f} ms | {r['p99_ttft_ms']:>7.1f} ms | {r['mean_tpot_ms']:>7.1f} ms | {r['median_e2e_s']:>7.2f} s | {r['output_throughput']:>8.2f} t/s | {r['total_throughput']:>8.2f} t/s |")
+        print("=" * 115)
+
+        summary_file = os.path.join(args.output_dir, "benchmark_sweep_summary.json")
+        with open(summary_file, "w") as f:
+            json.dump(results_table, f, indent=2)
+        print(f"\n💾 Summary JSON saved to: {summary_file}")
+
+    if __name__ == "__main__":
+        main()
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sglang-bench-sweep-job
+  namespace: default
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: sglang-bench-sweep
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        cloud.google.com/gke-nodepool: cpu-64-pool
+      containers:
+      - name: sglang-bench
+        image: lmsysorg/sglang:latest
+        command: ["python3", "-u", "/script/sglang_bench_sweep.py"]
+        args:
+        - "--host=sglang-kimi-k3-serving.default.svc.cluster.local"
+        - "--port=30000"
+        - "--model=moonshotai/Kimi-K3"
+        - "--tokenizer=gpt2"
+        - "--concurrencies"
+        - "8"
+        - "16"
+        - "32"
+        - "--prompts-per-concurrency-multiplier=3"
+        - "--output-dir=/tmp/bench_results"
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        resources:
+          requests:
+            cpu: "16"
+            memory: "32Gi"
+          limits:
+            cpu: "32"
+            memory: "64Gi"
+        volumeMounts:
+        - name: script-vol
+          mountPath: /script
+      volumes:
+      - name: script-vol
+        configMap:
+          name: sglang-bench-sweep-script
+          defaultMode: 0755
