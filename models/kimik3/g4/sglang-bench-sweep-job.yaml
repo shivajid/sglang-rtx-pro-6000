@@ -12,14 +12,75 @@ data:
     import os
     import sys
 
-    def parse_jsonl(filepath):
+    def parse_jsonl(filepath, sc_name, in_len, out_len, conc, num_prompts, elapsed):
         if not os.path.exists(filepath):
             return None
         with open(filepath, "r") as f:
             lines = [line.strip() for line in f if line.strip()]
-            if lines:
-                return json.loads(lines[-1])
-        return None
+        if not lines:
+            return None
+        
+        try:
+            summary = json.loads(lines[-1])
+        except Exception as e:
+            print(f"Error parsing summary line: {e}")
+            return None
+
+        req_lines = []
+        for line in lines[:-1]:
+            try:
+                req_lines.append(json.loads(line))
+            except Exception:
+                pass
+
+        completed = summary.get("completed", len(req_lines) if req_lines else num_prompts)
+        duration = summary.get("duration", elapsed)
+        total_input = summary.get("total_input_tokens", in_len * completed)
+        total_output = summary.get("total_output_tokens", summary.get("total_generated_tokens", out_len * completed))
+
+        out_tps = summary.get("output_throughput", (total_output / duration) if duration > 0 else 0.0)
+        total_tps = summary.get("total_throughput", ((total_input + total_output) / duration) if duration > 0 else 0.0)
+        req_tps = summary.get("request_throughput", (completed / duration) if duration > 0 else 0.0)
+
+        mean_tpot = summary.get("mean_tpot_ms", 0.0)
+        stream_speed = round(1000.0 / mean_tpot, 2) if mean_tpot > 0 else 0.0
+
+        res_row = {
+            "scenario": sc_name,
+            "concurrency": conc,
+            "successful_requests": completed,
+            "duration_s": round(duration, 2),
+            "total_input_tokens": total_input,
+            "total_generated_tokens": total_output,
+            "output_throughput": round(out_tps, 2),
+            "total_throughput": round(total_tps, 2),
+            "request_throughput": round(req_tps, 2),
+            "concurrency_measured": round(summary.get("concurrency", float(conc)), 2),
+            "e2e_mean_ms": round(summary.get("mean_e2e_latency_ms", 0.0), 2),
+            "e2e_median_ms": round(summary.get("median_e2e_latency_ms", 0.0), 2),
+            "e2e_p90_ms": round(summary.get("p90_e2e_latency_ms", 0.0), 2),
+            "e2e_p95_ms": round(summary.get("p95_e2e_latency_ms", 0.0), 2),
+            "e2e_p99_ms": round(summary.get("p99_e2e_latency_ms", 0.0), 2),
+            "ttft_mean_ms": round(summary.get("mean_ttft_ms", 0.0), 2),
+            "ttft_median_ms": round(summary.get("median_ttft_ms", 0.0), 2),
+            "ttft_p90_ms": round(summary.get("p90_ttft_ms", 0.0), 2),
+            "ttft_p95_ms": round(summary.get("p95_ttft_ms", 0.0), 2),
+            "ttft_p99_ms": round(summary.get("p99_ttft_ms", 0.0), 2),
+            "tpot_mean_ms": round(summary.get("mean_tpot_ms", 0.0), 2),
+            "tpot_median_ms": round(summary.get("median_tpot_ms", 0.0), 2),
+            "tpot_p90_ms": round(summary.get("p90_tpot_ms", 0.0), 2),
+            "tpot_p95_ms": round(summary.get("p95_tpot_ms", 0.0), 2),
+            "tpot_p99_ms": round(summary.get("p99_tpot_ms", 0.0), 2),
+            "itl_mean_ms": round(summary.get("mean_itl_ms", 0.0), 2),
+            "itl_median_ms": round(summary.get("median_itl_ms", 0.0), 2),
+            "itl_p90_ms": round(summary.get("p90_itl_ms", 0.0), 2),
+            "itl_p95_ms": round(summary.get("p95_itl_ms", 0.0), 2),
+            "itl_p99_ms": round(summary.get("p99_itl_ms", 0.0), 2),
+            "itl_max_ms": round(summary.get("max_itl_ms", 0.0), 2),
+            "stream_speed_tok_s": stream_speed,
+            "median_latency_s": round(summary.get("median_e2e_latency_ms", 0.0) / 1000.0, 2),
+        }
+        return res_row
 
     def main():
         parser = argparse.ArgumentParser(description="Run SGLang bench_serving sweep")
@@ -29,7 +90,7 @@ data:
         parser.add_argument("--tokenizer", type=str, default="gpt2", help="Tokenizer repo for benchmark client token counting")
         parser.add_argument("--concurrencies", type=int, nargs="+", default=[8, 16, 32], help="Concurrencies to sweep")
         parser.add_argument("--output-dir", type=str, default="/tmp/bench_results", help="Directory to save JSONL files")
-        parser.add_argument("--prompts-per-concurrency-multiplier", type=int, default=1, help="Multiplier for total prompts")
+        parser.add_argument("--prompts-per-concurrency-multiplier", type=int, default=3, help="Multiplier for total prompts")
         args = parser.parse_args()
 
         os.makedirs(args.output_dir, exist_ok=True)
@@ -48,7 +109,31 @@ data:
         print(f"🔤 Tokenizer: {args.tokenizer}")
         print(f"👥 Concurrencies: {args.concurrencies}")
         print(f"📊 Scenarios: {[s['name'] for s in scenarios]}")
+        print(f"✖️  Multiplier: {args.prompts_per_concurrency_multiplier}")
         print("=" * 80)
+
+        # Warmup
+        print("\n🔥 Executing initial warm-up (2 requests)...")
+        warmup_file = os.path.join(args.output_dir, "warmup.jsonl")
+        warmup_cmd = [
+            sys.executable, "-m", "sglang.bench_serving",
+            "--backend", "sglang",
+            "--host", args.host,
+            "--port", str(args.port),
+            "--model", args.model,
+            "--tokenizer", args.tokenizer,
+            "--dataset-name", "random",
+            "--random-input-len", "1000",
+            "--random-output-len", "200",
+            "--random-range-ratio", "0.0",
+            "--num-prompts", "2",
+            "--max-concurrency", "2",
+            "--output-file", warmup_file,
+            "--output-details"
+        ]
+        subprocess.run(warmup_cmd, check=False)
+        print("✅ Warm-up complete.\n")
+        time.sleep(3)
 
         results_table = []
 
@@ -87,48 +172,36 @@ data:
                 try:
                     proc = subprocess.run(cmd, check=False)
                     elapsed = time.time() - start_t
-                    data = parse_jsonl(out_file)
+                    data = parse_jsonl(out_file, sc_name, in_len, out_len, conc, num_prompts, elapsed)
                     if data:
-                        res_row = {
-                            "scenario": sc_name,
-                            "in_out": f"{in_len}/{out_len}",
-                            "concurrency": conc,
-                            "num_prompts": num_prompts,
-                            "completed": data.get("completed", 0),
-                            "duration_s": round(data.get("duration", elapsed), 2),
-                            "output_throughput": round(data.get("output_throughput", 0.0), 2),
-                            "total_throughput": round(data.get("total_throughput", 0.0), 2),
-                            "mean_ttft_ms": round(data.get("mean_ttft_ms", 0.0), 1),
-                            "median_ttft_ms": round(data.get("median_ttft_ms", 0.0), 1),
-                            "p99_ttft_ms": round(data.get("p99_ttft_ms", 0.0), 1),
-                            "mean_tpot_ms": round(data.get("mean_tpot_ms", 0.0), 1),
-                            "median_e2e_s": round(data.get("median_e2e_latency_ms", 0.0) / 1000.0, 2),
-                            "p99_e2e_s": round(data.get("p99_e2e_latency_ms", 0.0) / 1000.0, 2),
-                        }
-                        results_table.append(res_row)
-                        print(f"✅ Finished in {res_row['duration_s']}s | Output Throughput: {res_row['output_throughput']} tok/s | Median TTFT: {res_row['median_ttft_ms']} ms")
+                        results_table.append(data)
+                        print(f"✅ Finished in {data['duration_s']}s | Output Throughput: {data['output_throughput']} tok/s | Total: {data['total_throughput']} tok/s | Median TTFT: {data['ttft_median_ms']} ms | Mean TPOT: {data['tpot_mean_ms']} ms")
                     else:
                         print(f"⚠️ Warning: No JSONL output produced for {sc_name}_c{conc}")
                 except Exception as e:
                     print(f"❌ Execution failed: {e}")
 
-                time.sleep(2)
+                time.sleep(3)
 
-        print("\n" + "=" * 115)
+        print("\n" + "=" * 125)
         print("📊 COMPLETE SGLANG BENCH_SERVING SWEEP RESULTS")
-        print("=" * 115)
-        header = f"| {'Scenario':<8} | {'In/Out':<10} | {'Conc':<4} | {'Reqs':<4} | {'TTFT P50':<10} | {'TTFT P99':<10} | {'TPOT Mean':<10} | {'E2E P50':<9} | {'Out TPS':<10} | {'Total TPS':<10} |"
-        divider = f"|{'-'*10}|{'-'*12}|{'-'*6}|{'-'*6}|{'-'*12}|{'-'*12}|{'-'*12}|{'-'*11}|{'-'*12}|{'-'*12}|"
+        print("=" * 125)
+        header = f"| {'Scenario':<8} | {'Conc':<4} | {'Reqs':<4} | {'Out TPS':<10} | {'Total TPS':<11} | {'Req/s':<6} | {'TTFT P50':<10} | {'TTFT P99':<10} | {'TPOT Mean':<10} | {'ITL P50':<9} | {'E2E P50':<9} |"
+        divider = f"|{'-'*10}|{'-'*6}|{'-'*6}|{'-'*12}|{'-'*13}|{'-'*8}|{'-'*12}|{'-'*12}|{'-'*12}|{'-'*11}|{'-'*11}|"
         print(header)
         print(divider)
         for r in results_table:
-            print(f"| {r['scenario']:<8} | {r['in_out']:<10} | {r['concurrency']:<4} | {r['completed']:<4} | {r['median_ttft_ms']:>7.1f} ms | {r['p99_ttft_ms']:>7.1f} ms | {r['mean_tpot_ms']:>7.1f} ms | {r['median_e2e_s']:>7.2f} s | {r['output_throughput']:>8.2f} t/s | {r['total_throughput']:>8.2f} t/s |")
-        print("=" * 115)
+            print(f"| {r['scenario']:<8} | {r['concurrency']:<4} | {r['successful_requests']:<4} | {r['output_throughput']:>8.2f} t/s | {r['total_throughput']:>9.2f} t/s | {r['request_throughput']:>6.2f} | {r['ttft_median_ms']:>7.1f} ms | {r['ttft_p99_ms']:>7.1f} ms | {r['tpot_mean_ms']:>7.1f} ms | {r['itl_median_ms']:>6.1f} ms | {r['median_latency_s']:>7.2f} s |")
+        print("=" * 125)
 
-        summary_file = os.path.join(args.output_dir, "benchmark_sweep_summary.json")
+        summary_file = os.path.join(args.output_dir, "benchmark_data.json")
         with open(summary_file, "w") as f:
             json.dump(results_table, f, indent=2)
         print(f"\n💾 Summary JSON saved to: {summary_file}")
+
+        print("\n### BENCHMARK_DATA_START ###")
+        print(json.dumps(results_table, indent=2))
+        print("### BENCHMARK_DATA_END ###\n")
 
     if __name__ == "__main__":
         main()
