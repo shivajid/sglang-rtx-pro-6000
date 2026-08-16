@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 460" width="100%" height="100%" style="background:#181825; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;">
+  <style>
+    .title { fill: #cdd6f4; font-size: 18px; font-weight: bold; }
+    .subtitle { fill: #a6adc8; font-size: 13px; }
+    .axis { stroke: #45475a; stroke-width: 1.5; }
+    .grid { stroke: #313244; stroke-dasharray: 4; stroke-width: 1; }
+    .label { fill: #bac2de; font-size: 12px; }
+    .legend { fill: #cdd6f4; font-size: 12px; font-weight: 500; }
+    .dot-label { fill: #ffffff; font-size: 11px; font-weight: 600; text-anchor: middle; }
+  </style>
+
+  <!-- Title -->
+  <text x="50" y="38" class="title">Kimi-K3 on G4: Time to First Token (TTFT) vs Concurrency</text>
+  <text x="50" y="58" class="subtitle">Median Prefill Latency (ms) across Concurrencies 8, 16, 32 (Lower is Better)</text>
+
+  <!-- Grid lines & Y Labels -->
+  <line x1="100" y1="350" x2="740" y2="350" class="axis" />
+  <text x="85" y="355" class="label" text-anchor="end">0 ms</text>
+  <line x1="100" y1="293" x2="740" y2="293" class="grid" />
+  <text x="85" y="298" class="label" text-anchor="end">500 ms</text>
+  <line x1="100" y1="236" x2="740" y2="236" class="grid" />
+  <text x="85" y="241" class="label" text-anchor="end">1000 ms</text>
+  <line x1="100" y1="180" x2="740" y2="180" class="grid" />
+  <text x="85" y="185" class="label" text-anchor="end">1500 ms</text>
+  <line x1="100" y1="123" x2="740" y2="123" class="grid" />
+  <text x="85" y="128" class="label" text-anchor="end">2000 ms</text>
+
+  <!-- X Axis Lines & Labels -->
+  <line x1="180" y1="100" x2="180" y2="350" class="grid" />
+  <text x="180" y="375" class="label" text-anchor="middle" font-weight="bold">Concurrency 8</text>
+  <line x1="440" y1="100" x2="440" y2="350" class="grid" />
+  <text x="440" y="375" class="label" text-anchor="middle" font-weight="bold">Concurrency 16</text>
+  <line x1="700" y1="100" x2="700" y2="350" class="grid" />
+  <text x="700" y="375" class="label" text-anchor="middle" font-weight="bold">Concurrency 32</text>
+
+  <!-- Line 1: 8k_1k (Peach) -> High latency due to 8k prefill -->
+  <polyline points="180,128.848064 440,120.41553599999997 700,216.05196800000002" fill="none" stroke="#fab387" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="128.848064" r="6" fill="#fab387" stroke="#181825" stroke-width="2" />
+  <text x="180" y="116.848064" class="dot-label">1947 ms</text>
+  <circle cx="440" cy="120.41553599999997" r="6" fill="#fab387" stroke="#181825" stroke-width="2" />
+  <text x="440" y="108.41553599999997" class="dot-label">2021 ms</text>
+  <circle cx="700" cy="216.05196800000002" r="6" fill="#fab387" stroke="#181825" stroke-width="2" />
+  <text x="700" y="204.05196800000002" class="dot-label">1179 ms</text>
+
+  <!-- Line 2: 1k_1k (Blue) -->
+  <polyline points="180,314.663584 440,311.903104 700,309.8424" fill="none" stroke="#89b4fa" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="314.663584" r="5" fill="#89b4fa" stroke="#181825" stroke-width="1.5" />
+  <text x="180" y="304.663584" class="dot-label">311 ms</text>
+  <circle cx="440" cy="311.903104" r="5" fill="#89b4fa" stroke="#181825" stroke-width="1.5" />
+  <text x="440" y="301.903104" class="dot-label">335 ms</text>
+  <circle cx="700" cy="309.8424" r="5" fill="#89b4fa" stroke="#181825" stroke-width="1.5" />
+  <text x="700" y="299.8424" class="dot-label">354 ms</text>
+
+  <!-- Line 3: 1k_500 (Green) -->
+  <polyline points="180,312.633552 440,310.879568 700,309.060832" fill="none" stroke="#a6e3a1" stroke-width="2.5" stroke-dasharray="5,3" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="312.633552" r="4.5" fill="#a6e3a1" />
+  <circle cx="440" cy="310.879568" r="4.5" fill="#a6e3a1" />
+  <circle cx="700" cy="309.060832" r="4.5" fill="#a6e3a1" />
+
+  <!-- Line 4: 1k_8k (Teal) -->
+  <polyline points="180,312.493824 440,313.150432 700,309.917376" fill="none" stroke="#94e2d5" stroke-width="2.5" stroke-dasharray="3,3" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="312.493824" r="4.5" fill="#94e2d5" />
+  <circle cx="440" cy="313.150432" r="4.5" fill="#94e2d5" />
+  <circle cx="700" cy="309.917376" r="4.5" fill="#94e2d5" />
+
+  <!-- Legend -->
+  <line x1="220" y1="420" x2="245" y2="420" stroke="#89b4fa" stroke-width="3" />
+  <circle cx="232" cy="420" r="4" fill="#89b4fa" />
+  <text x="252" y="424" class="legend">1k/1k (Balanced)</text>
+
+  <line x1="370" y1="420" x2="395" y2="420" stroke="#fab387" stroke-width="3" />
+  <circle cx="382" cy="420" r="4" fill="#fab387" />
+  <text x="402" y="424" class="legend">8k/1k (8k Prompt)</text>
+
+  <line x1="520" y1="420" x2="545" y2="420" stroke="#a6e3a1" stroke-width="3" stroke-dasharray="5,3" />
+  <circle cx="532" cy="420" r="4" fill="#a6e3a1" />
+  <text x="552" y="424" class="legend">1k/500</text>
+
+  <line x1="660" y1="420" x2="685" y2="420" stroke="#94e2d5" stroke-width="3" stroke-dasharray="3,3" />
+  <circle cx="672" cy="420" r="4" fill="#94e2d5" />
+  <text x="692" y="424" class="legend">1k/8k</text>
+</svg>
