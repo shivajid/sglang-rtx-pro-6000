@@ -74,13 +74,13 @@ Because this benchmark focuses on operational serving responsiveness at low-to-m
 ## 4. Visual Performance Charts
 
 ### 4.1 Time to First Token (TTFT) Comparison
-![TTFT Comparison](charts/ttft_comparison.svg)
+![TTFT Comparison](bench_results/charts/ttft_comparison.svg)
 
 ### 4.2 Time Per Output Token (TPOT) & Decode Speed
-![TPOT Comparison](charts/tpot_comparison.svg)
+![TPOT Comparison](bench_results/charts/tpot_comparison.svg)
 
 ### 4.3 Throughput Scaling across Concurrencies
-![Throughput Scaling](charts/throughput_scaling.svg)
+![Throughput Scaling](bench_results/charts/throughput_scaling.svg)
 
 ---
 
