@@ -12,7 +12,7 @@ spec:
       restartPolicy: OnFailure
       serviceAccountName: sglang-sa
       nodeSelector:
-        cloud.google.com/gke-nodepool: g4-384-pool-pm-crwd
+        cloud.google.com/gke-nodepool: <YOUR_G4_NODEPOOL>
       tolerations:
       - key: "nvidia.com/gpu"
         operator: "Exists"
@@ -27,8 +27,8 @@ spec:
           set -e
           echo "=== Starting Kimi-K3 sync to Hyperdisk ML ==="
           mkdir -p /data/model
-          echo "Syncing from gs://shivajid-kimik3-useast5-ckpt/ to /data/model/ ..."
-          gcloud storage rsync -r gs://shivajid-kimik3-useast5-ckpt/ /data/model/
+          echo "Syncing from gs://<YOUR_CKPT_BUCKET>/ to /data/model/ ..."
+          gcloud storage rsync -r gs://<YOUR_CKPT_BUCKET>/ /data/model/
           echo "Sync complete! Checking disk contents:"
           ls -lh /data/model
           echo "Disk usage:"
