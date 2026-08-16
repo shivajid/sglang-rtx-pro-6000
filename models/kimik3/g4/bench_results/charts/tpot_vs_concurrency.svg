@@ -11,21 +11,21 @@
 
   <!-- Title -->
   <text x="50" y="38" class="title">Kimi-K3 on G4: Time Per Output Token (TPOT) vs Concurrency</text>
-  <text x="50" y="58" class="subtitle">Per-Token Decode Generation Latency (ms/tok) across Concurrencies 8, 16, 32</text>
+  <text x="50" y="58" class="subtitle">Mean Decode Latency per Token (ms/token) across Concurrencies 8, 16, 32 (Lower is Better)</text>
 
   <!-- Grid lines & Y Labels -->
   <line x1="100" y1="350" x2="740" y2="350" class="axis" />
-  <text x="85" y="355" class="label" text-anchor="end">80 ms</text>
-  <line x1="100" y1="300" x2="740" y2="300" class="grid" />
-  <text x="85" y="305" class="label" text-anchor="end">100 ms</text>
-  <line x1="100" y1="250" x2="740" y2="250" class="grid" />
-  <text x="85" y="255" class="label" text-anchor="end">120 ms</text>
-  <line x1="100" y1="200" x2="740" y2="200" class="grid" />
-  <text x="85" y="205" class="label" text-anchor="end">140 ms</text>
-  <line x1="100" y1="150" x2="740" y2="150" class="grid" />
-  <text x="85" y="155" class="label" text-anchor="end">160 ms</text>
-  <line x1="100" y1="100" x2="740" y2="100" class="grid" />
-  <text x="85" y="105" class="label" text-anchor="end">180 ms</text>
+  <text x="85" y="355" class="label" text-anchor="end">0 ms</text>
+  <line x1="100" y1="296.4" x2="740" y2="296.4" class="grid" />
+  <text x="85" y="301.4" class="label" text-anchor="end">30 ms</text>
+  <line x1="100" y1="242.9" x2="740" y2="242.9" class="grid" />
+  <text x="85" y="247.9" class="label" text-anchor="end">60 ms</text>
+  <line x1="100" y1="189.3" x2="740" y2="189.3" class="grid" />
+  <text x="85" y="194.3" class="label" text-anchor="end">90 ms</text>
+  <line x1="100" y1="135.7" x2="740" y2="135.7" class="grid" />
+  <text x="85" y="140.7" class="label" text-anchor="end">120 ms</text>
+  <line x1="100" y1="100.0" x2="740" y2="100.0" class="grid" />
+  <text x="85" y="105.0" class="label" text-anchor="end">140 ms</text>
 
   <!-- X Axis Lines & Labels -->
   <line x1="180" y1="100" x2="180" y2="350" class="grid" />
@@ -35,53 +35,51 @@
   <line x1="700" y1="100" x2="700" y2="350" class="grid" />
   <text x="700" y="375" class="label" text-anchor="middle" font-weight="bold">Concurrency 32</text>
 
-  <!-- Line 1: 1k_1k (Blue) -->
-  <polyline points="180,294.725 440,284.5 700,274.05" fill="none" stroke="#89b4fa" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
-  <circle cx="180" cy="294.725" r="6" fill="#89b4fa" stroke="#181825" stroke-width="2" />
-  <text x="180" y="282.725" class="dot-label">102.1 ms</text>
-  <circle cx="440" cy="284.5" r="6" fill="#89b4fa" stroke="#181825" stroke-width="2" />
-  <text x="440" y="272.5" class="dot-label">106.2 ms</text>
-  <circle cx="700" cy="274.05" r="6" fill="#89b4fa" stroke="#181825" stroke-width="2" />
-  <text x="700" y="262.05" class="dot-label">110.4 ms</text>
+  <!-- Line 1: 1k_8k (Teal) -->
+  <polyline points="180,257.2 440,238.3 700,222.3" fill="none" stroke="#94e2d5" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="257.2" r="6" fill="#94e2d5" stroke="#181825" stroke-width="2" />
+  <text x="180" y="247.2" class="dot-label">52.0 ms</text>
+  <circle cx="440" cy="238.3" r="6" fill="#94e2d5" stroke="#181825" stroke-width="2" />
+  <text x="440" y="228.3" class="dot-label">62.6 ms</text>
+  <circle cx="700" cy="222.3" r="6" fill="#94e2d5" stroke="#181825" stroke-width="2" />
+  <text x="700" y="212.3" class="dot-label">71.5 ms</text>
 
-  <!-- Line 2: 1k_8k (Teal) -->
-  <polyline points="180,295.7 440,290.25 700,285.875" fill="none" stroke="#94e2d5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-  <circle cx="180" cy="295.7" r="5" fill="#94e2d5" stroke="#181825" stroke-width="1.5" />
-  <text x="180" y="313.7" class="dot-label" fill="#94e2d5">101.7 ms</text>
-  <circle cx="440" cy="290.25" r="5" fill="#94e2d5" stroke="#181825" stroke-width="1.5" />
-  <text x="440" y="308.25" class="dot-label" fill="#94e2d5">103.9 ms</text>
-  <circle cx="700" cy="285.875" r="5" fill="#94e2d5" stroke="#181825" stroke-width="1.5" />
-  <text x="700" y="303.875" class="dot-label" fill="#94e2d5">105.7 ms</text>
+  <!-- Line 2: 1k_1k (Blue) -->
+  <polyline points="180,258.1 440,237.3 700,215.4" fill="none" stroke="#89b4fa" stroke-width="3" stroke-dasharray="6,4" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="258.1" r="5" fill="#89b4fa" stroke="#181825" stroke-width="1.5" />
+  <text x="180" y="276.1" class="dot-label">51.5 ms</text>
+  <circle cx="440" cy="237.3" r="5" fill="#89b4fa" stroke="#181825" stroke-width="1.5" />
+  <text x="440" y="255.3" class="dot-label">63.1 ms</text>
+  <circle cx="700" cy="215.4" r="5" fill="#89b4fa" stroke="#181825" stroke-width="1.5" />
+  <text x="700" y="233.4" class="dot-label">75.4 ms</text>
 
   <!-- Line 3: 8k_1k (Peach) -->
-  <polyline points="180,264.20000000000005 440,227.22499999999997 700,155.85000000000002" fill="none" stroke="#fab387" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-  <circle cx="180" cy="264.20000000000005" r="5" fill="#fab387" stroke="#181825" stroke-width="1.5" />
-  <text x="180" y="252.20000000000005" class="dot-label">114.3 ms</text>
-  <circle cx="440" cy="227.22499999999997" r="5" fill="#fab387" stroke="#181825" stroke-width="1.5" />
-  <text x="440" y="215.22499999999997" class="dot-label">129.1 ms</text>
-  <circle cx="700" cy="155.85000000000002" r="5" fill="#fab387" stroke="#181825" stroke-width="1.5" />
-  <text x="700" y="143.85000000000002" class="dot-label">157.7 ms</text>
+  <polyline points="180,227.7 440,199.6 700,139.5" fill="none" stroke="#fab387" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="227.7" r="5" fill="#fab387" stroke="#181825" stroke-width="1.5" />
+  <circle cx="440" cy="199.6" r="5" fill="#fab387" stroke="#181825" stroke-width="1.5" />
+  <circle cx="700" cy="139.5" r="5" fill="#fab387" stroke="#181825" stroke-width="1.5" />
+  <text x="700" y="129.5" class="dot-label">117.9 ms</text>
 
   <!-- Line 4: 1k_500 (Green) -->
-  <polyline points="180,273.1 440,276.375 700,254.89999999999998" fill="none" stroke="#a6e3a1" stroke-width="2.5" stroke-dasharray="5,3" stroke-linecap="round" stroke-linejoin="round" />
-  <circle cx="180" cy="273.1" r="4.5" fill="#a6e3a1" />
-  <circle cx="440" cy="276.375" r="4.5" fill="#a6e3a1" />
-  <circle cx="700" cy="254.89999999999998" r="4.5" fill="#a6e3a1" />
+  <polyline points="180,190.5 440,223.9 700,196.7" fill="none" stroke="#a6e3a1" stroke-width="2.5" stroke-dasharray="4,3" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="180" cy="190.5" r="4.5" fill="#a6e3a1" />
+  <circle cx="440" cy="223.9" r="4.5" fill="#a6e3a1" />
+  <circle cx="700" cy="196.7" r="4.5" fill="#a6e3a1" />
 
   <!-- Legend -->
-  <line x1="220" y1="420" x2="245" y2="420" stroke="#89b4fa" stroke-width="3" />
-  <circle cx="232" cy="420" r="4" fill="#89b4fa" />
-  <text x="252" y="424" class="legend">1k/1k (Balanced)</text>
+  <line x1="220" y1="420" x2="245" y2="420" stroke="#94e2d5" stroke-width="3" />
+  <circle cx="232" cy="420" r="4" fill="#94e2d5" />
+  <text x="252" y="424" class="legend">1k/8k (Reasoning)</text>
 
-  <line x1="370" y1="420" x2="395" y2="420" stroke="#94e2d5" stroke-width="3" />
-  <circle cx="382" cy="420" r="4" fill="#94e2d5" />
-  <text x="402" y="424" class="legend">1k/8k (Long Gen)</text>
+  <line x1="370" y1="420" x2="395" y2="420" stroke="#89b4fa" stroke-width="3" stroke-dasharray="4,3" />
+  <circle cx="382" cy="420" r="4" fill="#89b4fa" />
+  <text x="402" y="424" class="legend">1k/1k (Balanced)</text>
 
   <line x1="520" y1="420" x2="545" y2="420" stroke="#fab387" stroke-width="3" />
   <circle cx="532" cy="420" r="4" fill="#fab387" />
-  <text x="552" y="424" class="legend">8k/1k (Long Prompt)</text>
+  <text x="552" y="424" class="legend">8k/1k (Long Context)</text>
 
-  <line x1="660" y1="420" x2="685" y2="420" stroke="#a6e3a1" stroke-width="3" stroke-dasharray="5,3" />
-  <circle cx="672" cy="420" r="4" fill="#a6e3a1" />
-  <text x="692" y="424" class="legend">1k/500</text>
+  <line x1="680" y1="420" x2="705" y2="420" stroke="#a6e3a1" stroke-width="3" stroke-dasharray="4,3" />
+  <circle cx="692" cy="420" r="4" fill="#a6e3a1" />
+  <text x="712" y="424" class="legend">1k/500</text>
 </svg>
