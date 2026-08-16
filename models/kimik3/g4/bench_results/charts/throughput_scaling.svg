@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="100%" height="100%" style="background:#1e1e2e; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;">
+  <style>
+    .title { fill: #cdd6f4; font-size: 18px; font-weight: bold; }
+    .subtitle { fill: #a6adc8; font-size: 13px; }
+    .axis { stroke: #45475a; stroke-width: 1; }
+    .grid { stroke: #313244; stroke-dasharray: 4; stroke-width: 1; }
+    .label { fill: #bac2de; font-size: 12px; }
+    .bar-text { fill: #ffffff; font-size: 11px; font-weight: 600; text-anchor: middle; }
+    .legend { fill: #cdd6f4; font-size: 12px; }
+  </style>
+
+  <!-- Title -->
+  <text x="40" y="35" class="title">Kimi-K3 on G4: Token Generation Throughput Scaling</text>
+  <text x="40" y="55" class="subtitle">Output Token Throughput (tokens/sec) vs Concurrency 8, 16, 32</text>
+
+  <!-- Grid lines -->
+  <line x1="80" y1="360" x2="740" y2="360" class="axis" />
+  <line x1="80" y1="290" x2="740" y2="290" class="grid" />
+  <line x1="80" y1="220" x2="740" y2="220" class="grid" />
+  <line x1="80" y1="150" x2="740" y2="150" class="grid" />
+  <line x1="80" y1="80" x2="740" y2="80" class="grid" />
+
+  <!-- Y Axis Labels (0 to 250 tok/s) -->
+  <!-- scale: y = 360 - (val / 250 * 280) = 360 - (val * 1.12) -->
+  <text x="70" y="365" class="label" text-anchor="end">0 t/s</text>
+  <text x="70" y="295" class="label" text-anchor="end">62.5 t/s</text>
+  <text x="70" y="225" class="label" text-anchor="end">125 t/s</text>
+  <text x="70" y="155" class="label" text-anchor="end">187.5 t/s</text>
+  <text x="70" y="85" class="label" text-anchor="end">250 t/s</text>
+
+  <!-- Group 1: 1k_500 -->
+  <!-- c8: 27.8 -> h=31.1 -> y=328.9 -->
+  <rect x="110" y="329" width="28" height="31" rx="4" fill="#89dceb" />
+  <text x="124" y="322" class="bar-text">28 t/s</text>
+  <!-- c16: 109.2 -> h=122.3 -> y=237.7 -->
+  <rect x="142" y="238" width="28" height="122" rx="4" fill="#74c7ec" />
+  <text x="156" y="231" class="bar-text">109 t/s</text>
+  <!-- c32: 205.6 -> h=230.3 -> y=129.7 -->
+  <rect x="174" y="130" width="28" height="230" rx="4" fill="#89b4fa" />
+  <text x="188" y="123" class="bar-text">206 t/s</text>
+  <text x="156" y="380" class="label" text-anchor="middle">1k_500</text>
+
+  <!-- Group 2: 1k_1k -->
+  <!-- c8: 59.1 -> h=66.2 -> y=293.8 -->
+  <rect x="270" y="294" width="28" height="66" rx="4" fill="#89dceb" />
+  <text x="284" y="287" class="bar-text">59 t/s</text>
+  <!-- c16: 120.0 -> h=134.4 -> y=225.6 -->
+  <rect x="302" y="226" width="28" height="134" rx="4" fill="#74c7ec" />
+  <text x="316" y="219" class="bar-text">120 t/s</text>
+  <!-- c32: 228.6 -> h=256.0 -> y=104.0 -->
+  <rect x="334" y="104" width="28" height="256" rx="4" fill="#89b4fa" />
+  <text x="348" y="97" class="bar-text">229 t/s</text>
+  <text x="316" y="380" class="label" text-anchor="middle">1k_1k</text>
+
+  <!-- Group 3: 8k_1k -->
+  <!-- c8: 52.3 -> h=58.6 -> y=301.4 -->
+  <rect x="430" y="301" width="28" height="59" rx="4" fill="#89dceb" />
+  <text x="444" y="294" class="bar-text">52 t/s</text>
+  <!-- c16: 99.4 -> h=111.3 -> y=248.7 -->
+  <rect x="462" y="249" width="28" height="111" rx="4" fill="#74c7ec" />
+  <text x="476" y="242" class="bar-text">99 t/s</text>
+  <!-- c32: 177.5 -> h=198.8 -> y=161.2 -->
+  <rect x="494" y="161" width="28" height="199" rx="4" fill="#89b4fa" />
+  <text x="508" y="154" class="bar-text">177 t/s</text>
+  <text x="476" y="380" class="label" text-anchor="middle">8k_1k</text>
+
+  <!-- Group 4: 1k_8k -->
+  <!-- c8: 61.9 -> h=69.3 -> y=290.7 -->
+  <rect x="590" y="291" width="28" height="69" rx="4" fill="#89dceb" />
+  <text x="604" y="284" class="bar-text">62 t/s</text>
+  <!-- c16: 117.5 -> h=131.6 -> y=228.4 -->
+  <rect x="622" y="228" width="28" height="132" rx="4" fill="#74c7ec" />
+  <text x="636" y="221" class="bar-text">118 t/s</text>
+  <!-- c32: 224.8 -> h=251.7 -> y=108.3 -->
+  <rect x="654" y="108" width="28" height="252" rx="4" fill="#89b4fa" />
+  <text x="668" y="101" class="bar-text">225 t/s</text>
+  <text x="636" y="380" class="label" text-anchor="middle">1k_8k</text>
+
+  <!-- Legend -->
+  <rect x="480" y="35" width="14" height="14" rx="2" fill="#89dceb" />
+  <text x="500" y="47" class="legend">Concurrency = 8</text>
+  <rect x="600" y="35" width="14" height="14" rx="2" fill="#74c7ec" />
+  <text x="620" y="47" class="legend">Concurrency = 16</text>
+  <rect x="710" y="35" width="14" height="14" rx="2" fill="#89b4fa" />
+  <text x="730" y="47" class="legend">C=32</text>
+</svg>
