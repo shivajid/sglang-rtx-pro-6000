@@ -2,6 +2,9 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: sglang-glm52-nvfp4
+  namespace: default
+  labels:
+    app: sglang-glm52-nvfp4
 spec:
   replicas: 1
   selector:
@@ -17,7 +20,7 @@ spec:
       hostIPC: true
       dnsPolicy: ClusterFirstWithHostNet
       nodeSelector:
-        cloud.google.com/gke-nodepool: g4-384-np-1
+        cloud.google.com/gke-nodepool: g4-384-pool-pm-crwd
       tolerations:
       - key: nvidia.com/gpu
         operator: Exists
@@ -36,14 +39,10 @@ spec:
         - sglang.launch_server
         args:
         - --model-path
-        - nvidia/GLM-5.2-NVFP4
-        - --reasoning-parser
-        - glm45
-        - --tool-call-parser
-        - glm47
-        - --tp-size
-        - "8"
+        - /models/GLM-5.2-NVFP4
         - --trust-remote-code
+        - --tp
+        - "8"
         - --dp-size
         - "8"
         - --enable-dp-attention
@@ -57,9 +56,14 @@ spec:
         - flashinfer
         - --kv-cache-dtype
         - fp8_e4m3
+        - --dsa-prefill-backend
+        - trtllm
+        - --dsa-decode-backend
+        - trtllm
         - --disable-shared-experts-fusion
+        - --disable-piecewise-cuda-graph
         - --mem-fraction-static
-        - "0.85"
+        - "0.975"
         - --chunked-prefill-size
         - "2048"
         - --cuda-graph-bs
@@ -71,6 +75,10 @@ spec:
         - "9472"
         - --max-running-requests
         - "1024"
+        - --reasoning-parser
+        - glm45
+        - --tool-call-parser
+        - glm47
         - --host
         - 0.0.0.0
         - --port
@@ -105,7 +113,9 @@ spec:
           value: "1"
         - name: SGLANG_SET_CPU_AFFINITY
           value: "0"
-        - name: SAFETENSORS_FAST_GPU
+        - name: NCCL_NVLS_ENABLE
+          value: "0"
+        - name: NCCL_CUMEM_ENABLE
           value: "0"
         - name: PYTORCH_CUDA_ALLOC_CONF
           value: "expandable_segments:True"
@@ -113,36 +123,45 @@ spec:
           value: "1"
         - name: SGLANG_ENABLE_JIT_DEEPGEMM
           value: "0"
+        - name: GLOO_SOCKET_IFNAME
+          value: "eth0,eth1"
         resources:
+          requests:
+            nvidia.com/gpu: "8"
           limits:
             nvidia.com/gpu: "8"
         volumeMounts:
         - mountPath: /dev/shm
           name: dshm
-        - mountPath: /root/.cache/huggingface
-          name: hf-cache
+        - mountPath: /models
+          name: model-disk
+          readOnly: true
         - mountPath: /root/.cache/flashinfer
           name: flashinfer-cache
       volumes:
       - name: dshm
         emptyDir:
           medium: Memory
-          sizeLimit: 256Gi
-      - name: hf-cache
-        emptyDir: {}
+          sizeLimit: 64Gi
+      - name: model-disk
+        persistentVolumeClaim:
+          claimName: glm52-hdml-pvc
+          readOnly: true
       - name: flashinfer-cache
         emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: sglang-serving-glm52-nvfp4
+  name: sglang-glm52-nvfp4-service
+  namespace: default
+  labels:
+    app: sglang-glm52-nvfp4
 spec:
   type: NodePort
   selector:
     app: sglang-glm52-nvfp4
-    apps.kubernetes.io/pod-index: "0"
   ports:
-  - name: serving
-    port: 30000
-    targetPort: 30000
+  - name: http-inference
+    port: 8000
+    targetPort: 8000

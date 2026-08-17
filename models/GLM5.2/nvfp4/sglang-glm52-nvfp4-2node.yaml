@@ -1,0 +1,205 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sglang-glm52-nvfp4-2node
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sglang-glm52-nvfp4-2node
+  serviceName: "sglang-glm52-nvfp4-2node-service"
+  template:
+    metadata:
+      labels:
+        app: sglang-glm52-nvfp4-2node
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: reflection-8x-rtx6000-2nic-pool
+      containers:
+      - name: sglang-container
+        image: europe-west4-docker.pkg.dev/northam-ce-mlai-tpu/sglang-repo/sglang:glm-opt
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          cat << 'EOF' | sed 's/^          //' > /tmp/patch.py
+          import os
+          
+          # Patch dsa_indexer.py to use TileLang instead of DeepGemm on SM120
+          dsa_path = '/sgl-workspace/sglang/python/sglang/srt/layers/attention/dsa/dsa_indexer.py'
+          if os.path.exists(dsa_path):
+              with open(dsa_path, 'r') as f:
+                  code = f.read()
+              
+              # Import is_sm120_supported and define _use_tilelang_indexer
+              code = code.replace(
+                  'from sglang.srt.utils import (',
+                  'from sglang.srt.utils import (\n    is_sm120_supported,'
+              )
+              code = code.replace(
+                  '_is_cuda = is_cuda()',
+                  '_is_cuda = is_cuda()\n_use_tilelang_indexer = _is_cuda and (is_sm120_supported() or envs.SGLANG_OPT_USE_TILELANG_INDEXER.get())'
+              )
+              
+              # Guard the deep_gemm metadata call
+              code = code.replace(
+                  'if _is_cuda:',
+                  'if _is_cuda and not _use_tilelang_indexer:'
+              )
+              
+              # Add the TileLang execution branch before _is_hip
+              tilelang_branch = (
+                  "        if _use_tilelang_indexer:\n"
+                  "            from sglang.srt.layers.attention.dsa.tilelang_kernel import (\n"
+                  "                tilelang_fp8_paged_mqa_logits,\n"
+                  "            )\n"
+                  "            q_fp8 = q_fp8.unsqueeze(1)\n"
+                  "            logits = tilelang_fp8_paged_mqa_logits(\n"
+                  "                q_fp8[:q_offset],\n"
+                  "                kv_cache_fp8,\n"
+                  "                weights[:q_offset],\n"
+                  "                seqlens_32,\n"
+                  "                block_tables,\n"
+                  "                None,\n"
+                  "                max_seq_len,\n"
+                  "                clean_logits=False,\n"
+                  "            )\n"
+                  "        elif _is_hip:"
+              )
+              code = code.replace('        elif _is_hip:', tilelang_branch)
+              
+              with open(dsa_path, 'w') as f:
+                  f.write(code)
+              print('Successfully patched dsa_indexer.py')
+          EOF
+          python3 /tmp/patch.py
+
+          python3 -m pip install distro
+
+          python3 -m sglang.launch_server \
+              --model $MODEL_NAME \
+              --tensor-parallel-size 8 \
+              --pipeline-parallel-size 2 \
+              --dp-size 8 \
+              --enable-dp-attention \
+              --nnodes 2 \
+              --node-rank $POD_INDEX \
+              --port 8000 \
+              --dist-init-addr sglang-master-pod:5000 \
+              --trust-remote-code \
+              --kv-cache-dtype bfloat16 \
+              --quantization modelopt_fp4 \
+              --fp4-gemm-backend flashinfer_cutlass \
+              --moe-runner-backend flashinfer_cutlass \
+              --attention-backend dsa \
+              --dsa-prefill-backend tilelang \
+              --dsa-decode-backend tilelang \
+              --enable-flashinfer-allreduce-fusion \
+              --disable-shared-experts-fusion \
+              --enable-dp-lm-head \
+              --tokenizer-worker-num 16 \
+              --disable-custom-all-reduce \
+              --disable-radix-cache \
+              --reasoning-parser glm45 \
+              --tool-call-parser glm47 \
+              --mem-fraction-static 0.90 \
+              --chunked-prefill-size 16384 \
+              --cuda-graph-max-bs 128 \
+              --max-running-requests 768 \
+              --page-size 64 \
+              --host 0.0.0.0 	
+        env:
+        - name: MODEL_NAME
+          value: "nvidia/GLM-5.2-NVFP4"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        - name: POD_INDEX
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: NCCL_DEBUG
+          value: INFO
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0,eth1"
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: NCCL_P2P_LEVEL
+          value: "SYS"
+        - name: NCCL_SOCKET_NTHREADS
+          value: "8"
+        - name: NCCL_NSOCKS_PERTHREAD
+          value: "8"
+        - name: NCCL_MIN_NCHANNELS
+          value: "8"
+        - name: NCCL_ALLOC_P2P_NET_LL_BUFFERS
+          value: "1"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: SGLANG_ENABLE_DEEP_GEMM
+          value: "0"
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /root/.cache/huggingface
+          name: hf-cache
+        securityContext:
+          privileged: true  
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+        name: dshm
+      - name: hf-cache
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-master-pod
+spec:
+  clusterIP: None
+  selector:
+    app: sglang-glm52-nvfp4-2node
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: dist-port
+    port: 5000
+    targetPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-serving-on-master
+spec:
+  type: NodePort
+  selector:
+    app: sglang-glm52-nvfp4-2node
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: serving
+    port: 8000
+    targetPort: 8000
+  - name: metrics
+    port: 8080
+    targetPort: 8080

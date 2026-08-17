@@ -1,0 +1,67 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: glm52-hdml-downloader
+  namespace: default
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector:
+        cloud.google.com/gke-nodepool: g4-384-pool-pm-crwd
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: downloader
+        image: lmsysorg/sglang:dev-cu13
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+          echo "=== Starting GLM-5.2-NVFP4 Download to Hyperdisk ML ==="
+          mkdir -p /data/GLM-5.2-NVFP4
+          
+          echo "Installing hf_transfer for high-speed download..."
+          python3 -m pip install -q -U "huggingface_hub[cli,hf_transfer]"
+          
+          export HF_HUB_ENABLE_HF_TRANSFER=1
+          echo "Downloading nvidia/GLM-5.2-NVFP4 into /data/GLM-5.2-NVFP4 ..."
+          python3 -c '
+          import os
+          from huggingface_hub import snapshot_download
+
+          token = os.environ.get("HF_TOKEN")
+          local_dir = "/data/GLM-5.2-NVFP4"
+          print(f"Starting snapshot download to {local_dir}...")
+          path = snapshot_download(
+              repo_id="nvidia/GLM-5.2-NVFP4",
+              local_dir=local_dir,
+              token=token,
+              max_workers=16
+          )
+          print(f"Download complete: {path}")
+          '
+
+          echo "=== Download Complete! Checking contents ==="
+          ls -lah /data/GLM-5.2-NVFP4
+          echo "=== Disk Usage ==="
+          df -h /data
+          echo "=== Finished successfully ==="
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        volumeMounts:
+        - name: model-disk
+          mountPath: /data
+      volumes:
+      - name: model-disk
+        persistentVolumeClaim:
+          claimName: glm52-hdml-writer-pvc
