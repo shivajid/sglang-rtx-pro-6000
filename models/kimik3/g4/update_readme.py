@@ -1,4 +1,6 @@
-# Moonshot AI Kimi-K3 on G4 (SM120)
+#!/usr/bin/env python3
+
+readme_content = """# Moonshot AI Kimi-K3 on G4 (SM120)
 
 SGLang serving recipe, Hyperdisk ML multi-node weight provisioning, HiCache host-RAM hierarchical caching, and comprehensive performance benchmarks (Concurrencies 8 to 128) for **`moonshotai/Kimi-K3`** (64 MoE + Linear Attention layers, ~1.5 TB real weights) across **4× GCP G4 nodes** (`g4-standard-384`, 32 NVIDIA RTX Pro 6000 Ada Blackwell SM120 GPUs).
 
@@ -35,32 +37,32 @@ The following GKE manifests define the production deployment:
 Key launch flags (full manifest: [`g4_4node_kimik3.yaml`](./g4_4node_kimik3.yaml)):
 
 ```bash
-sglang serve \
-  --model-path /data/model \
-  --served-model-name moonshotai/Kimi-K3 \
-  --tp-size 8 \
-  --pp-size 4 \
-  --nnodes 4 \
-  --node-rank ${POD_INDEX} \
-  --dist-init-addr sglang-kimi-k3-master:20000 \
-  --moe-runner-backend marlin \
-  --attention-backend triton \
-  --triton-attention-num-kv-splits 16 \
-  --enable-hierarchical-cache \
-  --hicache-ratio 1.0 \
-  --hicache-write-policy write_through \
-  --hicache-io-backend direct \
-  --hicache-mem-layout page_first \
-  --kv-cache-dtype fp8_e4m3 \
-  --mem-fraction-static 0.9 \
-  --max-mamba-cache-size 256 \
-  --context-length 131072 \
-  --reasoning-parser kimi_k3 \
-  --tool-call-parser kimi_k3 \
-  --host 0.0.0.0 \
-  --port 30000 \
-  --watchdog-timeout 3600 \
-  --trust-remote-code \
+sglang serve \\
+  --model-path /data/model \\
+  --served-model-name moonshotai/Kimi-K3 \\
+  --tp-size 8 \\
+  --pp-size 4 \\
+  --nnodes 4 \\
+  --node-rank ${POD_INDEX} \\
+  --dist-init-addr sglang-kimi-k3-master:20000 \\
+  --moe-runner-backend marlin \\
+  --attention-backend triton \\
+  --triton-attention-num-kv-splits 16 \\
+  --enable-hierarchical-cache \\
+  --hicache-ratio 1.0 \\
+  --hicache-write-policy write_through \\
+  --hicache-io-backend direct \\
+  --hicache-mem-layout page_first \\
+  --kv-cache-dtype fp8_e4m3 \\
+  --mem-fraction-static 0.9 \\
+  --max-mamba-cache-size 256 \\
+  --context-length 131072 \\
+  --reasoning-parser kimi_k3 \\
+  --tool-call-parser kimi_k3 \\
+  --host 0.0.0.0 \\
+  --port 30000 \\
+  --watchdog-timeout 3600 \\
+  --trust-remote-code \\
   --enable-metrics
 ```
 
@@ -170,10 +172,10 @@ Full step-by-step instructions and manifests: **[`HYPERDISK_ML_SETUP_GUIDE.md`](
 ### Step 1: Provision Hyperdisk ML & Sync Model Weights
 ```bash
 # 1. Create the 2TB Hyperdisk ML disk in GCP
-gcloud compute disks create kimik3-hyperdisk-ml \
-    --project=<YOUR_PROJECT_ID> \
-    --zone=<YOUR_ZONE> \
-    --type=hyperdisk-ml \
+gcloud compute disks create kimik3-hyperdisk-ml \\
+    --project=<YOUR_PROJECT_ID> \\
+    --zone=<YOUR_ZONE> \\
+    --type=hyperdisk-ml \\
     --size=2000GB
 
 # 2. Mount in ReadWriteOnce mode and download weights from GCS
@@ -206,3 +208,15 @@ kubectl apply -f sglang-bench-sweep-job.yaml
 # Stream live benchmark execution logs
 kubectl logs -f job/sglang-bench-sweep-job
 ```
+"""
+
+targets = [
+    "/Users/shivajid/sglang-gke-igw/sglang-rtx-pro-6000/models/kimik3/g4/README.md",
+    "/Users/shivajid/sglang-gke-igw/KimkK3/G4/README.md",
+]
+
+for t in targets:
+    with open(t, "w") as f:
+        f.write(readme_content)
+    print(f"Updated {t}")
+
