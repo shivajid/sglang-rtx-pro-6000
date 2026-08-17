@@ -6,10 +6,11 @@ Key measured results (standard profile 1024 in / 8192 out, 512 concurrency, unle
 - Kimi-K2.6 NVFP4, 2 nodes: 3,261.28 output tok/s — repo best (bench_one_batch peak: 14,015.66 tok/s prefill)
 - Kimi-K2.5 NVFP4, 2 nodes: 3,237.46 output tok/s
 - Kimi-K3 on 4-node GB200: 2,883 total tok/s peak at concurrency 256 (1k/1k); ViBench agentic coding 95.6/100 over 24 apps on 8 nodes; ViBench Hard (brownfield feature extension, 63 test plans) 79.2/100 with 0 failed artifacts
-- Kimi-K3 on 4-node G4 (32x RTX PRO 6000, PP=4 TP=8, plain VPC ethernet, no NVLink/RDMA): 583.58 output tok/s peak at concurrency 112 (1k/8k), 480.86 tok/s at concurrency 64 with zero queueing and sub-530ms median TTFT; TPOT flat at 77.7-78.8 ms/token to 128 concurrency; 51.49 ms/tok single-stream decode; Hyperdisk ML cold-loads 1.53 TB / 96 shards in 42.8 s (~35.7 GB/s); 1,104 requests, 0 failures
+- Kimi-K3 on 4-node G4 (32x RTX PRO 6000, PP=4 TP=8, plain VPC ethernet, no NVLink/RDMA): 583.58 output tok/s peak at concurrency 112 (1k/8k), 480.86 tok/s at concurrency 64 with zero queueing and sub-530ms median TTFT; TPOT flat at 77.7-78.8 ms/token to 128 concurrency; 51.49 ms/tok single-stream decode; weights served from a Hyperdisk ML ReadOnlyMany volume mounted across all 4 nodes; 1,104 requests, 0 failures
 - Gemma-4-26B-A4B FP8 on a single RTX PRO 6000 via vLLM: 4,054.82 output tok/s peak (1k/1k @ 1024c), sub-250 ms median TTFT through concurrency 256; 24,327 total tok/s on a 10K-prompt profile — the only single-GPU LLM recipe here
 - DeepSeek-V4-Flash-0731 MXFP4, 2 nodes: 4,711 output tok/s at concurrency 512 (1k/1k) with no saturation plateau; TPOT 75 → 107 ms from 1 → 512 streams
 - GLM-5.2 FP8, 2 nodes (early config): 1,645.21 output tok/s; NVFP4 validated on GB300 (A4X Max)
+- GLM-5.2 NVFP4, 1 node (8x RTX PRO 6000, TP8 DP8, flashinfer_cutlass MoE): 1,100.92 output tok/s at concurrency 128 = 137.6 tok/s per GPU, ~34% better per GPU than the 2-node FP8 build at less than half the TPOT (115 vs 240 ms); 461.27 output tok/s at concurrency 64 with 1.0 s median TTFT. Requires --dsa-prefill-backend trtllm --dsa-decode-backend trtllm: the auto-selected flashinfer_sparse_mla silently emits NaN logits on SM120 with fp8 KV cache
 - DeepSeek-V3.2 NVFP4, 1 node: 334.4 output tok/s per GPU with EAGLE speculation
 - Agentic trace replay (12,542 real requests, up to 250 steps, ~73K-token prompts): 81.2% prefix-cache hit rate on a single node
 - HiCache on Qwen3.5-397B with 20K-token prompts: P99 TTFT 14.05 s → 3.36 s
@@ -29,7 +30,7 @@ Key measured results (standard profile 1024 in / 8192 out, 512 concurrency, unle
 - [Kimi-K3](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/kimik3): GB200 LeaderWorkerSet configs (TP16·DCP16 / TP32·DCP32), concurrency sweep 1→512 with charts, ViBench agentic coding reports
 - [Kimi-K3 on G4](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/kimik3/g4): 4-node RTX PRO 6000 recipe — PP=4·TP=8, marlin MoE with SM120 patch, triton radix linear attention, HiCache host-RAM spillover, fp8_e4m3 KV cache, 128K context, Hyperdisk ML weight provisioning guide
 - [GLM-5.1](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/GLM5.1): NEXTN speculation; super-linear 1→2 node scaling under saturation
-- [GLM-5.2](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/GLM5.2): FP8 2-node G4 results and GB300 (A4X Max) NVFP4 single-host setup guide
+- [GLM-5.2](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/GLM5.2): NVFP4 single-node G4 recipe (Hyperdisk ML weights, GSM8K correctness gate, DSA backend fixes), FP8 2-node G4 results, and GB300 (A4X Max) NVFP4 single-host setup guide
 - [Qwen3.5-397B](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/Qwen3.5): HiCache latency A/B with 20K-token prompts
 - [Gemma-4-26B](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/Gemma4-26B): single-GPU vLLM FP8 recipe, concurrency sweep 32→1024 across four workload shapes, plus a 10K-context 1-GPU vs TP=2 comparison
 - [Whisper-large-v3](https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/Whisper): DP8 audio transcription, 55.6 req/s

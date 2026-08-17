@@ -43,8 +43,8 @@ python3 -m sglang.bench_serving --backend sglang --model nvidia/GLM-5.2-NVFP4 \
 
 ---
 
-### 2-Node Setup
-- **Config**: [sglang-glm52-nvfp4-2node.yaml](./sglang-glm52-nvfp4-2node.yaml)
+### 2-Node Setup — ❌ not working
+- **Config**: [sglang-glm52-nvfp4-2node_notworking.yaml](./sglang-glm52-nvfp4-2node_notworking.yaml)
 - **GPUs**: 16x RTX PRO 6000 (2x g4-standard-384)
 - **Parallelism**: TP8, PP2, DP8
 - **Quantization**: `modelopt_fp4`
