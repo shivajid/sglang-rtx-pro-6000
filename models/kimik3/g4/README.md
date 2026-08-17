@@ -11,8 +11,8 @@ The server can take up to 30 mins to start. **Also note that on first request, i
 ## Recipe
 
 The following GKE manifests define the production deployment:
-- Launch Configuration: [`g4_4node_kimik3.yaml`](./g4_4node_kimik3.yaml)
 - Agentic Config with HiCache: [`g4-4node-kk3-agentic.yaml`](./g4-4node-kk3-agentic.yaml)
+- Launch Configuration [Slower perf]: [`g4_4node_kimik3.yaml`](./g4_4node_kimik3.yaml)
 
 ---
 
@@ -21,7 +21,7 @@ The following GKE manifests define the production deployment:
 | Item | Value |
 |------|-------|
 | Model | `moonshotai/Kimi-K3` (Full Real Safetensor Checkpoint) |
-| Hardware | 4 × `g4-standard-384` (32x NVIDIA RTX Pro 6000 Ada, 1.53 TB VRAM) |
+| Hardware | 4 × `g4-standard-384` (32x NVIDIA RTX Pro 6000) |
 | Parallelism | Pipeline Parallelism $PP=4$, Tensor Parallelism $TP=8$ |
 | Storage | GCP Hyperdisk ML (`ReadOnlyMany` 2,000 GB, ext4, ~35.7 GB/s aggregate bandwidth) |
 | SGLang Image | `lmsysorg/sglang:nightly-dev-cu13-20260816-4a6dc267` |
@@ -32,7 +32,7 @@ The following GKE manifests define the production deployment:
 | Context Length | 131,072 (128K context) |
 | Parsers | `--reasoning-parser kimi_k3 --tool-call-parser kimi_k3` |
 
-Key launch flags (full manifest: [`g4_4node_kimik3.yaml`](./g4_4node_kimik3.yaml)):
+Key launch flags (full manifest: [`g4-4node-kk3-agentic.yaml`](./g4-4node-kk3-agentic.yaml):
 
 ```bash
 sglang serve \
