@@ -191,7 +191,7 @@ kubectl apply -f model_weight_disk/kimik3-hdml-ro.yaml
 ### Step 2: Launch the 4-Node SGLang Serving Cluster
 ```bash
 # Apply the 4-Node StatefulSet with SM120 patch and Hyperdisk ML mount
-kubectl apply -f g4_4node_kimik3.yaml
+kubectl apply -f g4-4node-kk3-agentic.yaml
 
 # Follow the master node logs until the server is ready:
 kubectl logs -f sglang-kimi-k3-g4-0
