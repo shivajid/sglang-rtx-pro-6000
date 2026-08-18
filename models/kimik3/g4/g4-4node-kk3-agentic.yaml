@@ -258,7 +258,7 @@ spec:
             --attention-backend triton \
             --watchdog-timeout 3600 \
             --skip-server-warmup \
-            --mem-fraction-static 0.9 \
+            --mem-fraction-static 0.86 \
             --kv-cache-dtype fp8_e4m3 \
             --max-mamba-cache-size 256 \
             --context-length 131072 \
