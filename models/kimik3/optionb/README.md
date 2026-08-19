@@ -43,6 +43,26 @@ git apply KimiK3/flashinfer_situ_sm120.patch
 git commit -am "flashinfer: re-anchor SiTU (SoftCap-GLU) epilogue for SM120 cutlass MoE"
 ```
 
+### Patch completeness (verified)
+
+Both patches were empirically verified to be **complete and self-sufficient** by
+applying each to a pristine clone and diffing the result against the shipped
+`image_optb/` overlay:
+
+- **sglang** — `git apply` on pristine `4a6dc26` succeeds; all **8** resulting files
+  are byte-identical to `image_optb/sglang/...`. ✅ The patch alone reproduces the
+  full sglang change (the 1 new unit test is not in the patch — it ships in
+  `image_optb/sglang/test/...` and should be added via `git add` of that file, not
+  `git apply`).
+- **flashinfer** — `git apply` on pristine `0.6.18` succeeds; the patched
+  `common.h` is byte-identical to the overlay. The two larger files
+  (`cutlass_fused_moe_kernels.cuh`, `moe_gemm_kernels.h`) differ from the overlay
+  by **0.6.17↔0.6.18 upstream drift only** (~1227 / ~46 lines) — **none** of the
+  differing lines reference SiTU, and both the patched-0.6.18 and the overlay
+  contain `struct SituAdaptor` / `isGatedActivation(Situ)`. ✅ The patch alone
+  reproduces the full flashinfer change on 0.6.18; the overlay snapshot is the
+  same change on 0.6.17.
+
 ---
 
 ## 2. sglang changes (8 modified + 1 new test)
