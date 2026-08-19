@@ -18,6 +18,36 @@ behavior is byte-identical unless explicitly enabled.
 
 ---
 
+## Quickstart: build the container on a new server
+
+You need **only this directory** — you do **not** clone the `sglang` or
+`flashinfer` repos, and you do **not** run `git apply`. The full patched source
+files are already snapshotted under `image_optb/`; the Dockerfile `COPY`s them
+over the base image.
+
+```bash
+# 1. Get this build context (clone just this repo, or sparse-checkout / ZIP this dir)
+git clone https://github.com/shivajid/sglang-rtx-pro-6000.git
+cd sglang-rtx-pro-6000/models/kimik3/optionb/image_optb
+
+# 2. Build + push. Base image is pulled; patched files are COPYed in.
+docker build -t gcr.io/northam-ce-mlai-tpu/sglang-k3-mxfp8:latest .
+docker push gcr.io/northam-ce-mlai-tpu/sglang-k3-mxfp8:latest
+```
+
+The Dockerfile overlays the 8 sglang files + 3 flashinfer C++ files, warms the
+SM120 JIT cache (GPU-less, best-effort), and **hard-fails** if the SiTU patch is
+not wired up.
+
+**Prereqs on the new machine:** Docker, network access to pull the base image,
+and registry auth to push. A GPU is **not** required to build.
+
+> The two `.patch` files in this directory are **only** for opening PRs against
+> upstream `sglang` / `flashinfer` (Path B, §1). They are **not** needed to build
+> the container.
+
+---
+
 ## 1. Patch files (PR-ready, in this directory)
 
 | File | Repo / base | Apply |
