@@ -1,0 +1,86 @@
+diff --git a/csrc/fused_moe/cutlass_backend/cutlass_fused_moe_kernels.cuh b/csrc/fused_moe/cutlass_backend/cutlass_fused_moe_kernels.cuh
+index 0b2ff69..59feb89 100644
+--- a/csrc/fused_moe/cutlass_backend/cutlass_fused_moe_kernels.cuh
++++ b/csrc/fused_moe/cutlass_backend/cutlass_fused_moe_kernels.cuh
+@@ -2245,6 +2245,34 @@ struct SwigluStepAdaptor {
+   }
+ };
+ 
++// Kimi-K3 SiTU (SoftCap-GLU) activation. gate_out = situ_beta*tanh(gate/situ_beta)*sigmoid(gate),
++// up_out = situ_linear_beta*tanh(up/situ_linear_beta), out = gate_out*up_out. SGLang passes situ_beta
++// in swiglu_alpha and situ_linear_beta in swiglu_beta, so `alpha` = gate softcap and `beta` = up
++// softcap. No external clamp limit: the tanh softcaps bound the output, so `limit` stays at
++// infinity and is unused (doActivationKernel only overrides fn.limit when a swiglu_limit tensor is
++// supplied, which SGLang leaves None for SiTU). Formula matches SGLang's kimi_k3/situ_and_mul.cuh.
++struct SituAdaptor {
++  constexpr static bool IS_GLU = true;
++  float alpha = 4.0f;  // situ_beta (gate softcap)
++  float beta = 25.0f;  // situ_linear_beta (up softcap)
++  float limit = std::numeric_limits<float>::infinity();  // unused
++
++  template <class T>
++  __device__ T operator()(T const& gate, T const& linear) const {
++    // T is a vectorized cutlass::Array<float, N> fragment (N = 4/8/16/32) in the gated kernel, or a
++    // scalar float in the elementwise kernel. CUTLASS provides Array specializations of Tanh and
++    // Sigmoid and scalar*Array / Array*Array operators, but NOT Array/scalar division, so the
++    // softcap x/beta is written as beta * tanh(x * (1/beta)) with a float reciprocal.
++    cutlass::epilogue::thread::Sigmoid<T> sigmoid{};
++    cutlass::epilogue::thread::Tanh<T> tanh{};
++    float const inv_alpha = 1.0f / alpha;
++    float const inv_beta = 1.0f / beta;
++    T const gate_out = alpha * tanh(gate * inv_alpha) * sigmoid(gate);
++    T const up_out = beta * tanh(linear * inv_beta);
++    return gate_out * up_out;
++  }
++};
++
+ // ============================== Gated Activation =================================
+ constexpr static int MAX_ACTIVATION_THREADS_PER_BLOCK = 256;
+ 
+@@ -2328,6 +2356,8 @@ void doGatedActivation(ActivationOutputType* output, GemmOutputType const* gemm_
+                  ? &doGatedActivationKernel<ActivationOutputType, GemmOutputType, SwigluBiasAdaptor>
+              : activation_type == ActivationType::SwigluStep
+                  ? &doGatedActivationKernel<ActivationOutputType, GemmOutputType, SwigluStepAdaptor>
++             : activation_type == ActivationType::Situ
++                 ? &doGatedActivationKernel<ActivationOutputType, GemmOutputType, SituAdaptor>
+                  : nullptr;
+   TLLM_CHECK_WITH_INFO(fn != nullptr, "Invalid activation type");
+   fn<<<blocks, threads, 0, stream>>>(output, gemm_result, expert_first_token_offset, inter_size,
+@@ -2670,7 +2700,11 @@ void doActivation(T* output, GemmOutputType const* gemm_result, float const* fp8
+                               IdentityAdaptor<cutlass::epilogue::thread::Identity>,
+                               decltype(block_scaling_type)::value,
+                               decltype(disableFP4QuantFastMathTag)::value,
+-                              decltype(nvfp4_4over6_config_tag)>  // Identity
++                              decltype(nvfp4_4over6_config_tag)>,  // Identity
++          &doActivationKernel<T, GemmOutputType, ScaleBiasType, SituAdaptor,
++                              decltype(block_scaling_type)::value,
++                              decltype(disableFP4QuantFastMathTag)::value,
++                              decltype(nvfp4_4over6_config_tag)>  // Situ
+       };
+       return fn_list[static_cast<int>(activation_type.activation_type)];
+     };
+diff --git a/csrc/nv_internal/tensorrt_llm/kernels/cutlass_kernels/include/common.h b/csrc/nv_internal/tensorrt_llm/kernels/cutlass_kernels/include/common.h
+index ce1c0df..93d2842 100644
+--- a/csrc/nv_internal/tensorrt_llm/kernels/cutlass_kernels/include/common.h
++++ b/csrc/nv_internal/tensorrt_llm/kernels/cutlass_kernels/include/common.h
+@@ -30,6 +30,7 @@ enum class ActivationType {
+   SwigluStep,
+   GegluTanh,
+   Identity,
++  Situ,  // Kimi-K3 SoftCap-GLU; must keep ordinal 10 to match flashinfer python
+   InvalidType
+ };
+ 
+diff --git a/csrc/nv_internal/tensorrt_llm/kernels/cutlass_kernels/include/moe_gemm_kernels.h b/csrc/nv_internal/tensorrt_llm/kernels/cutlass_kernels/include/moe_gemm_kernels.h
+index 3761e32..2be7043 100644
+--- a/csrc/nv_internal/tensorrt_llm/kernels/cutlass_kernels/include/moe_gemm_kernels.h
++++ b/csrc/nv_internal/tensorrt_llm/kernels/cutlass_kernels/include/moe_gemm_kernels.h
+@@ -244,7 +244,7 @@ constexpr bool isGatedActivation(ActivationType activation_type) {
+   return activation_type == ActivationType::Swiglu || activation_type == ActivationType::Geglu ||
+          activation_type == ActivationType::SwigluBias ||
+          activation_type == ActivationType::SwigluStep ||
+-         activation_type == ActivationType::GegluTanh;
++         activation_type == ActivationType::GegluTanh || activation_type == ActivationType::Situ;
+ }
+ 
+ enum class Sm90Wfp4Afp8ScaleMode : uint8_t {
