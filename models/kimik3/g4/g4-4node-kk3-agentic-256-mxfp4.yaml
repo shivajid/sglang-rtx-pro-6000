@@ -76,105 +76,6 @@ spec:
     port: 30000
     targetPort: 30000
 ---
-# SM120 (RTX Pro 6000 / G4) kernel-guard hot-patch script, mounted into the
-# sglang container at /patch and run before `sglang serve` (see command below).
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: sglang-kimi-k3-sm120-patch
-  namespace: default
-  labels:
-    app: sglang-kimi-k3-g4
-data:
-  patch_sm120.py: |
-    # SM120 (RTX Pro 6000 / GCP G4) kernel-guard hot-patch for SGLang.
-    #
-    # tcgen05 / TMEM / cp.async.bulk exist only on datacenter Blackwell (SM100,
-    # compute-capability major 10). SM120 reports a HIGHER major (12) but lacks
-    # these instructions, so `major >= 10` guards wrongly enable SM100-only
-    # kernels and ptxas fails to JIT-compile them on G4.
-    #
-    # Each gate is rewritten to import is_sm100_supported LAZILY inside the
-    # function body, so the patch is self-contained and does NOT depend on the
-    # module's import header (which differs between the kimi-k3 image and main,
-    # and previously caused a NameError when only the body was rewritten).
-    # Idempotent; a py_compile smoke test runs after patching to fail fast.
-    import os
-    import py_compile
-    import re
-
-    base = os.environ.get("SGLANG_SRC", "/sgl-workspace/sglang/python/sglang")
-    attn_residual = os.path.join(base, "srt/layers/attn_residual.py")
-    cutedsl = [
-        os.path.join(base, "srt/layers/attention/linear/kernels/gdn_cutedsl.py"),
-        os.path.join(base, "srt/layers/attention/linear/kernels/kda_cutedsl.py"),
-    ]
-
-    def patch_attn_residual(s):
-        # Make _use_fast self-contained: lazy import + SM100-only gate.
-        # Matches the image's exact body (no is_npu) AND newer main (is_npu).
-        new_body = (
-            "    global _FAST_SUPPORTED\n"
-            "    if _FAST_SUPPORTED is None:\n"
-            "        from sglang.srt.utils import is_sm100_supported\n"
-            "        _FAST_SUPPORTED = is_sm100_supported()\n"
-            "    return _FAST_SUPPORTED and hidden_size == 7168"
-        )
-        pattern = re.compile(
-            r"    global _FAST_SUPPORTED\n"
-            r"(?:    if is_npu\(\):\n"
-            r"        return False\n)?"
-            r"    if _FAST_SUPPORTED is None:\n"
-            r"(?:        from sglang\.srt\.utils import is_sm100_supported\n)?"
-            r"        (?:major, _ = torch\.cuda\.get_device_capability\(\)\n"
-            r"        )?_FAST_SUPPORTED = (?:major >= 10|is_sm100_supported\(\))\n"
-            r"    return _FAST_SUPPORTED and hidden_size == 7168"
-        )
-        s, n = pattern.subn(new_body, s)
-        if n == 0 and "_FAST_SUPPORTED = is_sm100_supported()" not in s:
-            raise SystemExit("[sm120-patch] ERROR: could not patch _use_fast body")
-        return s
-
-    def patch_cutedsl(s):
-        # Make _is_blackwell self-contained: lazy import + SM100-only gate.
-        new_body = (
-            "    from sglang.srt.utils import is_sm100_supported\n"
-            "    return is_sm100_supported()"
-        )
-        pattern = re.compile(
-            r"    (?:from sglang\.srt\.utils import is_sm100_supported\n"
-            r"    )?"
-            r"(?:if not torch\.cuda\.is_available\(\):\n"
-            r"        return False\n"
-            r"    major, _ = torch\.cuda\.get_device_capability\(\)\n"
-            r"    return major >= 10"
-            r"|return is_sm100_supported\(\))"
-        )
-        s, n = pattern.subn(new_body, s)
-        if n == 0 and "return is_sm100_supported()" not in s:
-            raise SystemExit("[sm120-patch] ERROR: could not patch _is_blackwell body")
-        return s
-
-    patched = []
-    for path in [attn_residual] + cutedsl:
-        if not os.path.exists(path):
-            print("[sm120-patch] SKIP (not found):", path)
-            continue
-        src = open(path).read()
-        fn = patch_attn_residual if path == attn_residual else patch_cutedsl
-        open(path, "w").write(fn(src))
-        patched.append(path)
-        print("[sm120-patch] patched:", path)
-
-    # Fail fast: no stale `major >= 10` guard may remain, and every patched
-    # file must compile (catches NameError-class breakage before serve starts).
-    bad = [p for p in patched if "major >= 10" in open(p).read()]
-    if bad:
-        raise SystemExit("[sm120-patch] ERROR: 'major >= 10' still present in %s" % bad)
-    for p in patched:
-        py_compile.compile(p, doraise=True)
-    print("[sm120-patch] OK: SM120 will use the Triton fallback kernels.")
----
 # 4-Node Distributed StatefulSet with Pipeline Parallelism (PP=4, TP=8) on Hyperdisk ML
 apiVersion: apps/v1
 kind: StatefulSet
@@ -231,11 +132,8 @@ spec:
           echo "Node Rank: ${POD_INDEX} / Total Nodes: 4"
           echo "Master Address: sglang-kimi-k3-master:20000"
 
-          # NOTE: SM120 kernel-guard fixes are baked into the sglang-k3-mxfp8
-          # image (is_sm100_supported guards). The old in-YAML patch_sm120.py is
-          # intentionally NOT run here: against the patched image it corrupts the
-          # already-correct functions and its 'major >= 10' grep self-check trips
-          # on a code comment, exiting the container.
+          # NOTE: SM120 kernel-guard fixes (is_sm100_supported guards) are baked
+          # into the sglang-k3-mxfp8 image; no runtime hot-patch is needed.
 
           # --- SGLang Server Execution ---
           # MoE: flashinfer_mxfp4 routes SM120 -> cutlass_sm120 (fused-MoE path)
@@ -336,9 +234,6 @@ spec:
           readOnly: true
         - name: dshm
           mountPath: /dev/shm
-        - name: sm120-patch
-          mountPath: /patch
-          readOnly: true
       volumes:
       - name: hyperdisk-model-volume
         persistentVolumeClaim:
@@ -348,7 +243,4 @@ spec:
         emptyDir:
           medium: Memory
           sizeLimit: 64Gi
-      - name: sm120-patch
-        configMap:
-          name: sglang-kimi-k3-sm120-patch
 
