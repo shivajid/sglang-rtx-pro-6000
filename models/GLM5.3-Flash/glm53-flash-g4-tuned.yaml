@@ -1,0 +1,137 @@
+# GLM-5.3-Flash on a single GKE G4 node (8x RTX PRO 6000 Blackwell, SM120), TP8.
+# Cluster: shivaji-minimax-g4-384-cluster (us-central1-f), node pool: g4-384-np-1.
+# Image: us-central1-docker.pkg.dev/northam-ce-mlai-tpu/glm53/glm53-flash:sm120
+#   (ENTRYPOINT /opt/serve.sh; env-driven — no command override needed.)
+#
+# Prereqs:
+#   1. HF token secret (already exists): kubectl create secret generic hf-secret \
+#        --from-literal=HF_TOKEN=<HF_TOKEN>
+#   2. G4 node pool with NVIDIA driver >= 610 (CUDA 13.2) via the GPU device plugin.
+#
+# Notes vs the GLM5.2 2-node template: this is a SINGLE 8-GPU node (TP8), not 2-node
+# PP2, so no dist-init / headless-master Service is required — a plain Deployment +
+# ClusterIP Service suffices.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glm53-flash
+  labels:
+    app: glm53-flash
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate            # single 8-GPU node; never run two pods per node
+  selector:
+    matchLabels:
+      app: glm53-flash
+  template:
+    metadata:
+      labels:
+        app: glm53-flash
+    spec:
+      # Pin to the g4-384-np-1 node pool.
+      nodeSelector:
+        cloud.google.com/gke-nodepool: g4-384-np-1
+        cloud.google.com/gke-accelerator: nvidia-rtx-pro-6000
+      # Tolerate GPU taint if present.
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      hostIPC: true                 # NCCL/torch shared memory across 8 GPUs
+      containers:
+        - name: sglang
+          #image: us-central1-docker.pkg.dev/northam-ce-mlai-tpu/glm53/glm53-flash:sm120-moe-tuned-v1
+          image: aurius/sglang-glm53-flash-rtxpr6000:sm120-moe-tuned-v1 
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MODEL_PATH
+              value: zai-org/GLM-5.3-Flash
+            - name: TENSOR_PARALLEL_SIZE
+              value: "8"
+            - name: KV_CACHE_DTYPE
+              value: bfloat16
+            - name: MOE_RUNNER_BACKEND
+              value: triton
+            - name: GRAMMAR_BACKEND
+              value: xgrammar
+            # CUDA graphs WORKING on SM120 (tilelang num_stages=1 fix) — keep enabled.
+            - name: DISABLE_CUDA_GRAPH
+              value: "0"
+            - name: MEM_FRACTION_STATIC
+              value: "0.85"
+            - name: PORT
+              value: "30000"
+            - name: HOST
+              value: 0.0.0.0
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: HF_TOKEN
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-secret
+                  key: HF_TOKEN
+            # Persist HF cache so weights survive pod restarts.
+            - name: HF_HOME
+              value: /models/hf
+          ports:
+            - containerPort: 30000
+              name: http
+          resources:
+            limits:
+              nvidia.com/gpu: 8
+            requests:
+              nvidia.com/gpu: 8
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 30000
+            initialDelaySeconds: 600    # 320B FP8 model load across 8 GPUs is slow
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 30000
+            initialDelaySeconds: 900
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 5
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+            - name: model-cache
+              mountPath: /models
+          securityContext:
+            capabilities:
+              add: ["IPC_LOCK"]       # required by some CUDA/NCCL paths
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi
+        # hostPath cache on the G4 node's local NVMe (fast reload). Swap for a
+        # PD/Filestore PVC for shared/persistent model storage.
+        - name: model-cache
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: glm53-flash
+  labels:
+    app: glm53-flash
+spec:
+  selector:
+    app: glm53-flash
+  ports:
+    - name: http
+      port: 80
+      targetPort: 30000
+  type: ClusterIP
+
