@@ -22,6 +22,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 | Model | Benchmarked | Quantization | Setup | Output Throughput (tok/s) | Total Throughput (tok/s) | Peak Throughput (tok/s) | TPOT (ms) |
 |-------|-------------|--------------|-------|---------------------------|--------------------------|-------------------------|-----------|
+| [zai-org/GLM-5.3-Flash](./models/GLM5.3-Flash/README.md)§ | 2026-08-29 | FP8 (tuned SM120 MoE) | 1 Node (8x RTX 6000) | 2579.80 | 9481.70 | 9481.70 | 70.60 |
 | [nvidia/GLM-5.2-NVFP4](./models/GLM5.2/nvfp4/resuts/benchmark_results.md)‡ | 2026-08-17 | NVFP4 | 1 Node (8x RTX 6000) | 1100.92 | 1238.53 | 1280.00 | 115.00 |
 | [moonshotai/Kimi-K3 (G4)](./models/kimik3/g4/BENCHMARK_REPORT.md)† | 2026-08-16 | BF16 (FP8 KV) | 4 Nodes (32x RTX 6000) | 583.58 | 649.11 | 816.00 | 78.85 |
 | [google/gemma-4-26B-A4B](./models/Gemma4-26B/results/master_benchmark_summary.md)**** | 2026-08-09 | FP8 | 1 Node (1x RTX 6000, vLLM) | 3623.30 | 4094.73 | 4054.82 | 61.75 |
@@ -42,7 +43,9 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 **[openai/whisper-large-v3](./models/whisper-v3-large/results/benchmark_results.md)** - Since this is ASR model, we did not apply the standard ISL/OSL of 1K/8K and concurrancy of 512.
 
-*Table last updated: August 17, 2026*
+*Table last updated: August 29, 2026*
+
+*§ GLM-5.3-Flash runs on a single node with FP8 plus custom-tuned SM120 Triton fused-MoE kernels (E=289/N=256) — it would not serve on RTX PRO 6000 without the SM120 tilelang `num_stages=1` and DSA-backend patches described in its README. Its row reports the `1k/8k` reasoning peak output (2,579.8 tok/s @ C=256) and the `8k/1k` peak total (9,481.7 tok/s @ C=128); TPOT is the `1k/8k` @ 256 median ITL. See the [GLM-5.3 sweep report](./models/GLM5.3-Flash/results/benchmark_sweep_results.md).*
  
 *Benchmarks conducted using `inf` request rate and 512 max concurrency. Tests utilized a random dataset with 1024 input tokens and 8192 output tokens (1536 total prompts). The load generator was isolated on a dedicated CPU-only node pool to ensure zero interference with GPU performance.*
 
@@ -57,6 +60,24 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 *† Kimi-K3 on G4 saturates at **128** concurrency, not 512 — the 32-GPU cluster hits its compute ceiling well before the standard profile's concurrency, so its row is the `1k/8k` peak at C=112. The Peak column is the observed burst peak (816 tok/s). Compare it to the [GB200 row](#performance-benchmarks-latest) for the same model on different silicon, not to the 512-concurrency rows. See the [G4 report](./models/kimik3/g4/BENCHMARK_REPORT.md).*
 
 *\*\*\*\* gemma-4-26B-A4B is served with **vLLM** (not SGLang) on a single GPU, and is benchmarked with `sglang.bench_serving` as the client. Its main-table row is the `1k/8k` @ 512 concurrency point of the sweep; the Peak column is the best observed output throughput across all patterns (`1k/1k` @ 1024). Full sweep: [master_benchmark_summary.md](./models/Gemma4-26B/results/master_benchmark_summary.md).*
+
+## [zai-org/GLM-5.3-Flash](./models/GLM5.3-Flash/README.md) Performance Sweep
+[Detailed Configuration & Results](./models/GLM5.3-Flash/)
+
+GLM-5.3-Flash (DeepSeek-style MoE + DSA, FP8, R1-style CoT) served on a **single G4 node** (8x RTX PRO 6000, SM120, TP=8). This model would **not serve on RTX PRO 6000 out of the box** — it required SM120 kernel patches (tilelang `num_stages=1` for the 99 KB shared-memory cap, and forcing the DSA backends to tilelang for GLM-5.3's rope=0 / 256-dim nope KV layout) plus a **custom-tuned Triton fused-MoE kernel config** (E=289/N=256, fp8_w8a8) generated on-node. Full 12-run sweep across `1k/1k`, `1k/8k`, and `8k/1k`, concurrency 32 → 256.
+
+### Benchmark Settings
+- **Setup:** 1 Node (8x RTX PRO 6000), TP=8, `moe-runner-backend=triton` (tuned), DSA on tilelang, decode CUDA graphs on.
+- **Image:** `glm53-flash:sm120-moe-tuned-v1` (SGLang main + GLM-5.3 support + SM120 patches + tuned MoE config).
+- **Workload Patterns:** `1k/8k` (reasoning), `8k/1k` (prefill), `1k/1k` (balanced) at concurrency 32 → 256.
+
+| Workload Pattern | Peak Output Tok/s | Peak Total Tok/s | @ Concurrency | Median ITL |
+| :--- | :---: | :---: | :---: | :---: |
+| **8k / 1k (Prefill)** | 1,064.2 | **9,481.7** | 128 | 53.7 ms |
+| **1k / 1k (Balanced)** | 1,913.1 | 3,870.0 | 256 | 69.4 ms |
+| **1k / 8k (Reasoning)** | **2,579.8** | 2,898.7 | 256 | 70.6 ms |
+
+**Operating guidance:** concurrency **64–128** is the sweet spot — sub-second median TTFT (204–695 ms), stable ITL (~30–54 ms), and near-peak saturation. Profiling shows the TP8 AllReduce over PCIe is the dominant GPU cost (~43%), with the tuned MoE at ~25%. See the [model README](./models/GLM5.3-Flash/README.md) for the SM120 patches, profiling breakdown, and the optimization roadmap (prefill CUDA graphs, MoE down-projection TMA tune, fp8 dense GEMM).
 
 ## [moonshotai/Kimi-K2.6](./models/KimiK2.6/agent_benchmark/README.md) Agentic Benchmark
 [Detailed Configuration & Results](./models/KimiK2.6/agent_benchmark/)
@@ -263,6 +284,7 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
   - `DeepSeekv4/`: DeepSeek-V4-Pro (1.6T) 2-node config — not yet optimized.
   - `GLM5.1/`: Optimized configurations and results for GLM-5.1.
   - [`GLM5.2/`](./models/GLM5.2/README.md): NVFP4 single-node and FP8 two-node recipes with benchmarks, plus the Blackwell (GB300) setup guide.
+  - [`GLM5.3-Flash/`](./models/GLM5.3-Flash/README.md): FP8 single-node (TP8) recipe with tuned SM120 MoE kernels and a 12-run concurrency sweep.
   - `Gemma4-26B/`: Single-GPU (and TP=2) vLLM configs and concurrency sweeps for Gemma 4 26B.
   - `kimik3/`: Performance sweeps and ViBench/ViBench-Hard agentic results for Kimi-K3, on both GB200 and G4.
     - `kimik3/g4/`: 4-node G4 recipe (`PP=4 · TP=8`, Marlin MoE, HiCache), benchmark report, and the Hyperdisk ML weight-provisioning guide.
@@ -276,6 +298,7 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
 - `gcp_g4_specs.md`: Detailed hardware and infrastructure specifications.
 
 ## Key Updates (July–August 2026)
+- **[GLM-5.3-Flash on one node](./models/GLM5.3-Flash/README.md)**: Got GLM-5.3-Flash serving on a single G4 node (8x RTX PRO 6000, TP8) — a model that would not run on SM120 out of the box. Required tilelang `num_stages=1` (99 KB smem cap) + DSA-backend patches and a custom-tuned SM120 fused-MoE kernel config (E=289/N=256). Peak **9,481.7 total tok/s** (`8k/1k` @ C=128) and **2,579.8 output tok/s** (`1k/8k` @ C=256); profiling shows TP8 AllReduce over PCIe is the dominant cost (~43%).
 - **Kimi-K3 on G4**: Got the ~1.5 TB Kimi-K3 checkpoint serving across 4 G4 nodes (32x RTX PRO 6000) over plain VPC ethernet with `PP=4 · TP=8`, Marlin MoE + SM120 patch, and HiCache host-RAM spillover — 583.58 peak output tok/s, decode 2× faster than the earlier baseline, with weights served from Hyperdisk ML.
 - **Gemma 4 26B Single-GPU Recipe**: Added a vLLM-based single-GPU (and TP=2) recipe for `gemma-4-26B-A4B` on G4, with a full 32 → 1024 concurrency sweep across four workload patterns — 4,055 output tok/s peak and sub-250 ms median TTFT through concurrency 256, plus a dedicated 10K-context sweep.
 - **Kimi-K3 ViBench Hard**: Ran the harder brownfield feature-extension tier on the 8-node (32x GB200) deployment — 79.2/100 normalized with zero failed artifacts; scores climb with task complexity (96.8/100 on Feature 4 refactors).
@@ -303,6 +326,7 @@ The `gkecluster` directory contains a comprehensive template for provisioning a 
 
 Detailed performance logs, including TTFT/TPOT latency distributions and throughput metrics, are located within each model's `results` directory:
 
+- [zai-org/GLM-5.3-Flash: models/GLM5.3-Flash/results/benchmark_sweep_results.md](./models/GLM5.3-Flash/results/benchmark_sweep_results.md)
 - [deepseek-ai/DeepSeek-V4-Flash-0731: models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md](./models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md)
 - [moonshotai/Kimi-K3 on G4: models/kimik3/g4/BENCHMARK_REPORT.md](./models/kimik3/g4/BENCHMARK_REPORT.md)
 - [moonshotai/Kimi-K3 (GB200): models/kimik3/results/benchamrk_sweep_report.md](./models/kimik3/results/benchamrk_sweep_report.md)
