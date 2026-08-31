@@ -12,6 +12,50 @@ reasoning) on a single **G4** node (8× RTX PRO 6000 Blackwell, SM120), TP=8.
 
 ---
 
+## Running outside GKE (plain Docker)
+
+The image is env-driven (`/opt/serve.sh` entrypoint), so the same deployment runs on any
+8× RTX PRO 6000 host with plain Docker — no Kubernetes required. The pod-level NCCL settings
+map to `--ipc=host`, `--shm-size=64g`, and `--cap-add=IPC_LOCK`; no `NCCL_*` env vars are
+needed for single-node TP8:
+
+```bash
+docker run -d --name glm53-flash \
+  --gpus all \
+  --ipc=host \
+  --shm-size=64g \
+  --cap-add=IPC_LOCK \
+  -p 30000:30000 \
+  -v /mnt/models:/models \
+  -e MODEL_PATH=zai-org/GLM-5.3-Flash \
+  -e TENSOR_PARALLEL_SIZE=8 \
+  -e KV_CACHE_DTYPE=bfloat16 \
+  -e MOE_RUNNER_BACKEND=triton \
+  -e GRAMMAR_BACKEND=xgrammar \
+  -e DISABLE_CUDA_GRAPH=0 \
+  -e MEM_FRACTION_STATIC=0.85 \
+  -e HOST=0.0.0.0 \
+  -e PORT=30000 \
+  -e HF_TOKEN=<your_hf_token> \
+  -e HUGGING_FACE_HUB_TOKEN=<your_hf_token> \
+  -e HF_HOME=/models/hf \
+  aurius/sglang-glm53-flash-rtxpr6000:sm120-moe-tuned-v1
+```
+
+Health check: `curl http://localhost:30000/health`. Use this image rather than stock SGLang —
+the SM120 kernel patches and tuned MoE config baked into it (see below) are required on this
+hardware.
+
+The same command is available as a ready-to-run script,
+[`run_glm53_flash_docker.sh`](./run_glm53_flash_docker.sh):
+
+```bash
+HF_TOKEN=<your_hf_token> ./run_glm53_flash_docker.sh
+# optional: MODEL_CACHE_DIR=/data/models PORT=8000 HF_TOKEN=... ./run_glm53_flash_docker.sh
+```
+
+---
+
 ## Results
 
 Standard profile: random dataset, `inf` request rate, isolated load generator. Workloads swept
