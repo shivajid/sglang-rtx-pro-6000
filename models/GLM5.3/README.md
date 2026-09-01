@@ -7,6 +7,9 @@ Serving recipe for **GLM-5.3** (full-size MoE + DSA reasoning model, FP8) on G4 
 |--------|----------|--------------|--------|--------|
 | **FP8 · 2 nodes** | 16× RTX PRO 6000 | `zai-org/GLM-5.3` (FP8) | [`sglang-2node-glm53.yaml`](./sglang-2node-glm53.yaml) | ✅ Working |
 
+**Serving image:** [`lmsysorg/sglang:dev-cu13`](https://hub.docker.com/r/lmsysorg/sglang) —
+stock SGLang dev build on CUDA 13, SM120-ready. See [Docker image](#docker-image).
+
 > ⏳ **Benchmarks pending.** Recipe is validated for bring-up (server healthy, decode CUDA
 > graphs captured on both PP stages). Standard-profile numbers will be added once the sweep
 > completes.
@@ -15,6 +18,81 @@ This page documents the **launch command and the environment variables** — the
 that actually determine whether GLM-5.3 serves correctly and how fast. The Kubernetes
 wrapper (StatefulSet, services, Hyperdisk ML mount) is in the YAML above; nothing on this
 page is GKE-specific except where noted.
+
+---
+
+## Docker image
+
+| | |
+|---|---|
+| **Image** | `lmsysorg/sglang:dev-cu13` |
+| **Registry** | [docker.io/lmsysorg/sglang](https://hub.docker.com/r/lmsysorg/sglang) |
+| **Pull policy** | `Always` (as deployed in the YAML) |
+| **Base** | CUDA 13 runtime, SGLang dev branch — includes Blackwell (SM120) kernels |
+| **Entrypoint** | Overridden: the YAML runs `pip install distro` then `sglang.launch_server` directly (the image's default `/opt/serve.sh` entrypoint is not used) |
+| **Extra deps** | `python3 -m pip install distro` at container start (small; needed by the runtime) |
+| **GPU req** | NVIDIA driver ≥ 580 (CUDA 13 compatible), 8× RTX PRO 6000 per node |
+
+### Running outside GKE (plain Docker, 2 nodes)
+
+The same image runs the 2-node recipe on any two 8× RTX PRO 6000 hosts — no Kubernetes
+required. Run **identical commands on both hosts**, substituting `$NODE_RANK` (0 or 1) and
+`$MASTER_HOST` (rank-0 IP/hostname, reachable from both). Weights must be present at
+`/models/GLM-5.3` on **both** nodes (or set `MODEL_NAME=zai-org/GLM-5.3` to pull from HF —
+753 GB per node).
+
+```bash
+docker run -d --name glm53-2node \
+  --gpus all \
+  --ipc=host \
+  --shm-size=64g \
+  --cap-add=IPC_LOCK \
+  --network host \
+  -v /models/GLM-5.3:/models/GLM-5.3:ro \
+  -e NODE_RANK=0 \
+  -e MASTER_HOST=10.0.0.1 \
+  -e MODEL_NAME=/models/GLM-5.3 \
+  -e HF_TOKEN=<your_hf_token> \
+  lmsysorg/sglang:dev-cu13 \
+  bash -c '
+    python3 -m pip install distro &&
+
+    # NCCL over PCIe/Ethernet (see NCCL table below)
+    export NCCL_SOCKET_IFNAME=eth0,eth1 NCCL_IB_DISABLE=1 NCCL_P2P_LEVEL=SYS
+    export NCCL_SOCKET_NTHREADS=8 NCCL_NSOCKS_PERTHREAD=8 NCCL_MIN_NCHANNELS=8
+    export NCCL_ALLOC_P2P_NET_LL_BUFFERS=1 NCCL_NVLS_ENABLE=0 NCCL_CUMEM_ENABLE=0
+
+    # SGLang runtime
+    export SGLANG_PP_LAYER_PARTITION=38,40
+    export SGLANG_SET_CPU_AFFINITY=1 OMP_NUM_THREADS=24
+    export SAFETENSORS_FAST_GPU=1 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    export SGLANG_ENABLE_DEEP_GEMM=0 SGLANG_ENABLE_JIT_DEEPGEMM=0
+
+    python3 -m sglang.launch_server \
+      --model $MODEL_NAME --quantization fp8 \
+      --tensor-parallel-size 8 --pipeline-parallel-size 2 \
+      --nnodes 2 --node-rank $NODE_RANK --dist-init-addr $MASTER_HOST:5000 \
+      --dp-size 8 --enable-dp-attention \
+      --attention-backend flashinfer --dsa-prefill-backend trtllm --dsa-decode-backend trtllm \
+      --kv-cache-dtype fp8_e4m3 --page-size 64 --mem-fraction-static 0.80 \
+      --moe-a2a-backend none --ep-size 1 --moe-runner-backend triton \
+      --disable-shared-experts-fusion --disable-radix-cache \
+      --reasoning-parser glm45 --tool-call-parser glm47 \
+      --trust-remote-code --host 0.0.0.0 --port 8000'
+```
+
+Docker-flag rationale:
+
+| Flag | Why |
+|------|-----|
+| `--network host` | The API port (8000), metrics (8080), and the torch rendezvous (5000) must be directly reachable — host networking avoids NAT breaking NCCL socket transport. |
+| `--ipc=host` | Shared-memory transport for intra-node NCCL/CUDA IPC across the 8 GPUs. |
+| `--shm-size=64g` | Generous /dev/shm for the TP=8 collectives' staging buffers. |
+| `--cap-add=IPC_LOCK` | Allows pinning CUDA/NCCL host memory (required by NCCL P2P registration). |
+| `-v /models/GLM-5.3:...:ro` | Read-only weight mount — never let the server write into the checkpoint dir. |
+
+> On GKE, the same settings map to pod-level `hostNetwork`/`hostIPC`, `/dev/shm` sizing, and
+> `privileged: true` in the StatefulSet — see the YAML.
 
 ---
 
