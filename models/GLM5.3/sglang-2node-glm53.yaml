@@ -1,0 +1,180 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sglang-glm53-fp8-2node
+spec:
+  replicas: 2
+  # Start both pods concurrently. The default OrderedReady policy serializes
+  # startup (pod-0 Running before pod-1 is created), so node-1 would wait on
+  # node-0's image pull + container start. Parallel pulls/starts both at once.
+  # Pod identity stays stable via the apps.kubernetes.io/pod-index label, which
+  # --node-rank $POD_INDEX depends on.
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: sglang-glm53-fp8-2node
+  serviceName: "sglang-glm53-fp8-2node-service"
+  template:
+    metadata:
+      labels:
+        app: sglang-glm53-fp8-2node
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: g4-384-np-0
+      containers:
+      - name: sglang-container
+        image: lmsysorg/sglang:dev-cu13
+        imagePullPolicy: Always
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          python3 -m pip install distro
+          python3 -m sglang.launch_server \
+              --model $MODEL_NAME \
+              --quantization fp8 \
+              --tensor-parallel-size 8 \
+              --pipeline-parallel-size 2 \
+              --nnodes 2 \
+              --node-rank $POD_INDEX \
+              --dist-init-addr sglang-master-pod:5000 \
+              --dp-size 8 \
+              --enable-dp-attention \
+              --attention-backend flashinfer \
+              --dsa-prefill-backend trtllm \
+              --dsa-decode-backend trtllm \
+              --kv-cache-dtype fp8_e4m3 \
+              --moe-a2a-backend none \
+              --ep-size 1 \
+              --moe-runner-backend triton \
+              --disable-shared-experts-fusion \
+              --trust-remote-code \
+              --disable-radix-cache \
+              --reasoning-parser glm45 \
+              --tool-call-parser glm47 \
+              --mem-fraction-static 0.80 \
+              --page-size 64 \
+              --host 0.0.0.0 --port 8000
+        env:
+        # Weights are served from the Hyperdisk ML read-only volume (mounted at
+        # /models), downloaded once by glm53-downloader-job. Loading from local
+        # disk avoids re-downloading ~753 GB per pod. To pull from HF directly
+        # instead, set this back to "zai-org/GLM-5.3" and drop the model-disk mount.
+        - name: MODEL_NAME
+          value: "/models/GLM-5.3"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        - name: POD_INDEX
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        # - name: NCCL_DEBUG
+        #   value: INFO
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0,eth1"
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: NCCL_P2P_LEVEL
+          value: "SYS"
+        - name: NCCL_SOCKET_NTHREADS
+          value: "8"
+        - name: NCCL_NSOCKS_PERTHREAD
+          value: "8"
+        - name: NCCL_MIN_NCHANNELS
+          value: "8"
+        - name: NCCL_ALLOC_P2P_NET_LL_BUFFERS
+          value: "1"
+        - name: NCCL_NVLS_ENABLE
+          value: "0"
+        - name: NCCL_CUMEM_ENABLE
+          value: "0"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        # GLM-5.3 has 78 decoder layers. With index_topk_freq=4 + index_skip_topk_offset=3,
+        # DSA layers reuse a previous layer's top-k indices except on "full-topk" layers
+        # (layers ≡ 2 mod 4, plus dense layers 0-2). A PP boundary must land on a full-topk
+        # layer, else the upstream stage must forward topk_indices across the boundary and
+        # decode CUDA-graph capture asserts:
+        #   "PP stage ending at layer N must forward DSA topk_indices ... skip-topk layer".
+        # 39 (even split) is a skip-topk layer -> crash. 38 is full-topk, so 38,40 is valid
+        # and near-balanced (78 = 38 + 40).
+        - name: SGLANG_PP_LAYER_PARTITION
+          value: "38,40"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: SGLANG_ENABLE_DEEP_GEMM
+          value: "0"
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /root/.cache/huggingface
+          name: hf-cache
+        # GLM-5.3 weights, read-only, shared across both nodes (Hyperdisk ML).
+        - mountPath: /models
+          name: model-disk
+          readOnly: true
+        securityContext:
+          privileged: true
+      hostNetwork: true
+      hostIPC: true
+      dnsPolicy: ClusterFirstWithHostNet
+      volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+        name: dshm
+      - name: hf-cache
+        emptyDir: {}
+      # GLM-5.3 weights on Hyperdisk ML (ReadOnlyMany), shared across both nodes.
+      - name: model-disk
+        persistentVolumeClaim:
+          claimName: glm53-hdml-pvc
+          readOnly: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-master-pod
+spec:
+  clusterIP: None
+  selector:
+    app: sglang-glm53-fp8-2node
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: dist-port
+    port: 5000
+    targetPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-serving-on-master
+spec:
+  type: NodePort
+  selector:
+    app: sglang-glm53-fp8-2node
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: serving
+    port: 8000
+    targetPort: 8000
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+
