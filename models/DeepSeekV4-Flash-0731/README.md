@@ -66,6 +66,31 @@ In addition to 2-node serving, DeepSeek-V4-Flash-0731 can be served on a **singl
 | Storage | 500 GB Hyperdisk Balanced mounted at `/models/DeepSeek-V4-Flash-0731` |
 | Manifest | [`sglang-dsv4-flash-1node-hdml.yaml`](./sglang-dsv4-flash-1node-hdml.yaml) |
 
+Key launch flags (full manifest: [`sglang-dsv4-flash-1node-hdml.yaml`](./sglang-dsv4-flash-1node-hdml.yaml)):
+
+```bash
+python3 -m sglang.launch_server \
+  --model-path /models/DeepSeek-V4-Flash-0731 \
+  --trust-remote-code \
+  --tensor-parallel-size 8 \
+  --dp-size 8 \
+  --enable-dp-attention \
+  --moe-runner-backend flashinfer_mxfp4 \
+  --kv-cache-dtype fp8_e4m3 \
+  --disable-custom-all-reduce \
+  --mem-fraction-static 0.85 \
+  --cuda-graph-max-bs-decode 32 \
+  --max-running-requests 768 \
+  --chunked-prefill-size 16384 \
+  --context-length 131072 \
+  --page-size 256 \
+  --enable-mixed-chunk \
+  --reasoning-parser deepseek-v3 \
+  --tool-call-parser deepseekv32 \
+  --enable-metrics \
+  --host 0.0.0.0 --port 30000
+```
+
 ### 1K / 8K Reasoning Concurrency Sweep (Single-Node)
 
 Benchmarked with `sglang.bench_serving` from the cluster's isolated CPU pool (`shd-gem-cpu-pool`):
