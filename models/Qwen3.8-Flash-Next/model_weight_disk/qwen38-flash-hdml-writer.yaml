@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: qwen38-flash-hdml-pv
+spec:
+  storageClassName: ""
+  capacity:
+    storage: 500Gi
+  accessModes:
+    - ReadWriteOnce
+  claimRef:
+    namespace: default
+    name: qwen38-flash-hdml-writer-pvc
+  csi:
+    driver: pd.csi.storage.gke.io
+    volumeHandle: projects/northam-ce-mlai-tpu/zones/europe-west4-b/disks/qwen38-flash-hyperdisk-ml
+    fsType: ext4
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qwen38-flash-hdml-writer-pvc
+  namespace: default
+spec:
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Gi
+  volumeName: qwen38-flash-hdml-pv

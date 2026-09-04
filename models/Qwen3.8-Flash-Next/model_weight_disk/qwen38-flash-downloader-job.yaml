@@ -1,0 +1,65 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: qwen38-flash-hdml-downloader
+  namespace: default
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector:
+        cloud.google.com/gke-nodepool: reflection-8x-rtx6000-2nic-pool
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: downloader
+        image: docker.io/lmsysorg/sglang:qwen38flashnext
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+          echo "=== Starting Qwen3.8-Flash-Next Download to Hyperdisk ==="
+          mkdir -p /data/Qwen3.8-Flash-Next
+
+          echo "Downloading Qwen/Qwen3.8-Flash-Next into /data/Qwen3.8-Flash-Next ..."
+          python3 -c '
+          import os
+          from huggingface_hub import snapshot_download
+
+          token = os.environ.get("HF_TOKEN")
+          local_dir = "/data/Qwen3.8-Flash-Next"
+          print(f"Starting snapshot download to {local_dir}...")
+          path = snapshot_download(
+              repo_id="Qwen/Qwen3.8-Flash-Next",
+              local_dir=local_dir,
+              token=token,
+              max_workers=16
+          )
+          print(f"Download complete: {path}")
+          '
+
+          echo "=== Download Complete! Checking contents ==="
+          ls -lah /data/Qwen3.8-Flash-Next
+          echo "=== Disk Usage ==="
+          df -h /data
+          echo "=== Finished successfully ==="
+        env:
+        - name: HF_HUB_DISABLE_XET
+          value: "1"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        volumeMounts:
+        - name: model-disk
+          mountPath: /data
+      volumes:
+      - name: model-disk
+        persistentVolumeClaim:
+          claimName: qwen38-flash-hdml-writer-pvc

@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sglang-sa
+  namespace: default
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sglang-qwen38-flash-next-latency
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sglang-qwen38-flash-next-latency
+  serviceName: "sglang-qwen38-flash-next-latency"
+  template:
+    metadata:
+      labels:
+        app: sglang-qwen38-flash-next-latency
+    spec:
+      serviceAccountName: sglang-sa
+      hostNetwork: true
+      hostIPC: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        cloud.google.com/gke-nodepool: reflection-8x-rtx6000-2nic-pool # G4 8x RTX PRO 6000 Blackwell nodepool (shd-gem-cluster)
+        # Note: If running on chavoshi-v10-cluster, switch to:
+        # cloud.google.com/gke-nodepool: chavoshi-v10-pool
+      tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
+      containers:
+      - name: sglang-container
+        image: docker.io/lmsysorg/sglang:qwen38flashnext
+        imagePullPolicy: Always
+        securityContext:
+          privileged: true
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          echo "Starting SGLang Single-Node for Qwen3.8-Flash-Next (Latency - TP8 + NEXTN MTP) from Hyperdisk ML..."
+
+          python3 -m sglang.launch_server \
+              --model-path /models/Qwen3.8-Flash-Next \
+              --tp 8 \
+              --mem-fraction-static 0.85 \
+              --chunked-prefill-size 8192 \
+              --linear-attn-prefill-backend flashinfer \
+              --linear-attn-decode-backend flashinfer \
+              --linear-attn-verify-backend triton \
+              --mamba-ssm-dtype bfloat16 \
+              --speculative-algorithm NEXTN \
+              --speculative-num-steps 3 \
+              --speculative-eagle-topk 1 \
+              --speculative-num-draft-tokens 4 \
+              --max-running-requests 96 \
+              --reasoning-parser auto \
+              --enable-metrics \
+              --host 0.0.0.0 \
+              --port 30000
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        # Single-node: no inter-node NCCL socket tuning needed (TP8 intra-node only).
+        - name: NCCL_DEBUG
+          value: WARN
+        - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
+          value: "18000"
+        - name: SGLANG_ENABLE_SPEC_V2
+          value: "1"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: SGLANG_ENABLE_DEEP_GEMM
+          value: "0"
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        - name: SGLANG_DISABLE_DEEP_GEMM
+          value: "1"
+        - name: FLASHINFER_DISABLE_VERSION_CHECK
+          value: "1"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /root/.cache/flashinfer
+          name: flashinfer-cache
+        - mountPath: /models
+          name: model-disk
+          readOnly: true
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+      - name: flashinfer-cache
+        emptyDir: {}
+      - name: model-disk
+        persistentVolumeClaim:
+          claimName: qwen38-flash-hdml-pvc
+---
+# Serving Service (single pod, routes directly to pod 0)
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-qwen38-flash-next-latency-serving
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: sglang-qwen38-flash-next-latency
+  ports:
+  - name: http
+    port: 30000
+    targetPort: 30000
+  - name: metrics
+    port: 8080
+    targetPort: 8080
