@@ -1,13 +1,14 @@
 # DeepSeek-V4-Flash-0731
 
-SGLang serving recipe and benchmarks for **`deepseek-ai/DeepSeek-V4-Flash-0731`** (released July 31, 2026) on **2× GCP G4 nodes** (`g4-standard-384`, 16× NVIDIA RTX PRO 6000 Blackwell, 96 GB each).
+SGLang serving recipes and benchmarks for **`deepseek-ai/DeepSeek-V4-Flash-0731`** (released July 31, 2026) on **GCP G4 nodes** (`g4-standard-384`, 8× or 16× NVIDIA RTX PRO 6000 Blackwell, 96 GB each) in both **single-node (8 GPUs)** and **2-node (16 GPUs)** configurations.
 
 ## Highlights
 
-- **4,710.94 output tok/s** at concurrency 512 on the balanced `1k/1k` workload — with throughput **still climbing at 512 streams** (no saturation plateau, unlike the other trillion-class recipes in this repo).
-- **TPOT barely degrades under load**: 75.3 ms/tok single-stream → 87.6–89.3 ms at 128 streams → 106.5–113.4 ms at 512 streams (~8.8–9.4 tok/s per user at full saturation).
-- **Sub-second TTFT through concurrency 256** for 1K prompts (940.8 ms); only 1.23 s at 512.
-- **100% success rate** (0 failed requests) at every concurrency level, 1 → 512, across all three workload patterns.
+- **Single-Node Peak 6,122 tok/s**: Delivers **3,880.89 output tok/s** (6,122.00 peak) at concurrency 512 on `1k/8k` reasoning on a single 8× RTX PRO 6000 host, scaling smoothly from C=64 (1,440.93 tok/s).
+- **2-Node Scaling**: **4,710.94 output tok/s** at concurrency 512 on the balanced `1k/1k` workload with throughput still climbing at 512 streams.
+- **Zero Boot Disk Pressure**: Weight ingestion via dedicated 500 GB Hyperdisk Balanced volume (`dsv4-flash-hyperdisk-balanced`) protects the G4 node's 94 GB boot disk from eviction.
+- **Sub-second TTFT through concurrency 256** for 1K prompts (940.8 ms on 2-node; ~1.6–2.8 s on 1-node).
+- **100% success rate** (0 failed requests) at every concurrency level, 1 → 512, across all evaluated workloads.
 
 ## Configuration
 
@@ -120,15 +121,30 @@ Benchmarked with `sglang.bench_serving` from the cluster's isolated CPU pool (`s
 
 ## Reproduce
 
+### Single-Node (1× G4 node, 8× RTX PRO 6000)
+
 ```bash
-# Deploy single-node serving with Hyperdisk mount
+# 1. Mount provisioned Hyperdisk Balanced volume (see model_weight_disk/README.md)
+kubectl apply -f models/DeepSeekV4-Flash-0731/model_weight_disk/dsv4-flash-hdml-ro.yaml
+
+# 2. Deploy single-node serving with Hyperdisk mount
 kubectl apply -f models/DeepSeekV4-Flash-0731/sglang-dsv4-flash-1node-hdml.yaml
 
-# Run 1K/8K benchmark sweep (64, 128, 256 concurrency)
+# 3. Run 1K/8K benchmark sweep (64, 128, 256 concurrency)
 kubectl apply -f models/DeepSeekV4-Flash-0731/benchmarks/bench-1k8k-sweep.yaml
 
-# Run 1K/8K benchmark at 512 concurrency
+# 4. Run 1K/8K benchmark at 512 concurrency
 kubectl apply -f models/DeepSeekV4-Flash-0731/benchmarks/bench-1k8k-512c.yaml
+```
+
+### Two-Node (2× G4 nodes, 16× RTX PRO 6000)
+
+```bash
+# 1. Deploy 2-node serving
+kubectl apply -f models/DeepSeekV4-Flash-0731/sglang-dsv4-flash-2node.yaml
+
+# 2. Run the full sweep from the isolated benchmark client
+kubectl apply -f models/DeepSeekV4-Flash-0731/sglang-dsv4-flash-benchmark-runner.yaml
 ```
 
 ## Related

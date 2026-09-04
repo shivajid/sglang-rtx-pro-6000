@@ -22,6 +22,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 | Model | Benchmarked | Quantization | Setup | Output Throughput (tok/s) | Total Throughput (tok/s) | Peak Throughput (tok/s) | TPOT (ms) |
 |-------|-------------|--------------|-------|---------------------------|--------------------------|-------------------------|-----------|
+| [deepseek-ai/DeepSeek-V4-Flash-0731 (1-Node)](./models/DeepSeekV4-Flash-0731/README.md)# | 2026-09-04 | MXFP4 | 1 Node (8x RTX 6000) | 3880.89 | — | 6122.00 | 88.71 |
 | [zai-org/GLM-5.3-Flash](./models/GLM5.3-Flash/README.md)§ | 2026-08-29 | FP8 (tuned SM120 MoE) | 1 Node (8x RTX 6000) | 2579.80 | 9481.70 | 9481.70 | 70.60 |
 | [nvidia/GLM-5.2-NVFP4](./models/GLM5.2/nvfp4/resuts/benchmark_results.md)‡ | 2026-08-17 | NVFP4 | 1 Node (8x RTX 6000) | 1100.92 | 1238.53 | 1280.00 | 115.00 |
 | [moonshotai/Kimi-K3 (G4)](./models/kimik3/g4/BENCHMARK_REPORT.md)† | 2026-08-16 | BF16 (FP8 KV) | 4 Nodes (32x RTX 6000) | 583.58 | 649.11 | 816.00 | 78.85 |
@@ -43,7 +44,9 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 **[openai/whisper-large-v3](./models/whisper-v3-large/results/benchmark_results.md)** - Since this is ASR model, we did not apply the standard ISL/OSL of 1K/8K and concurrancy of 512.
 
-*Table last updated: August 29, 2026*
+*Table last updated: September 4, 2026*
+
+*# DeepSeek-V4-Flash-0731 (1-Node) was benchmarked on a single 8× RTX PRO 6000 node using 500GB Hyperdisk Balanced persistent storage (`1k/8k` reasoning sweep, 64 → 512 concurrency). Output throughput reached 3,880.89 tok/s with 6,122.00 peak at C=512. See [DeepSeekV4-Flash-0731/README.md](./models/DeepSeekV4-Flash-0731/README.md).*
 
 *§ GLM-5.3-Flash runs on a single node with FP8 plus custom-tuned SM120 Triton fused-MoE kernels (E=289/N=256) — it would not serve on RTX PRO 6000 without the SM120 tilelang `num_stages=1` and DSA-backend patches described in its README. Its row reports the `1k/8k` reasoning peak output (2,579.8 tok/s @ C=256) and the `8k/1k` peak total (9,481.7 tok/s @ C=128); TPOT is the `1k/8k` @ 256 median ITL. See the [GLM-5.3 sweep report](./models/GLM5.3-Flash/results/benchmark_sweep_results.md).*
  
@@ -160,6 +163,17 @@ Full concurrency sweep (1 → 512) of DeepSeek's **V4-Flash** (Jul 31, 2026 chec
 | **1k / 8k (Reasoning)** | 1,606.27 tok/s | 512 | 107.64 ms | 1.55 s |
 
 TPOT moves only **75.3 → 106–113 ms/tok** from 1 → 512 streams; 100% success rate at every level. Charts: [results/charts/](./models/DeepSeekV4-Flash-0731/results/charts/). The unoptimized 1.6T [DeepSeek-V4-Pro config](./models/DeepSeekv4/) runs on the same topology.
+
+### Single-Node `1k/8k` Reasoning Sweep (8× RTX PRO 6000, Hyperdisk Balanced)
+
+Served on 1 node (8× RTX PRO 6000, `TP=8 · DP=8`, DP attention) with weights mounted via a 500 GB Hyperdisk Balanced volume to eliminate boot disk pressure. Benchmarked from an isolated CPU client pool (`shd-gem-cpu-pool`):
+
+| Concurrency | Output tok/s | Peak tok/s | Mean TTFT | Mean TPOT | Avg Latency | Completed |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **64** | 1,440.93 | — | 1,663.9 ms | 33.98 ms | 148.99 s | 32 / 32 (100%) |
+| **128** | 2,230.09 | — | 1,982.0 ms | 41.78 ms | 165.03 s | 48 / 48 (100%) |
+| **256** | 2,676.52 | 4,474.00 | 2,892.7 ms | 82.89 ms | 324.25 s | 128 / 128 (100%) |
+| **512** | **3,880.89** | **6,122.00** | 10,460.8 ms | 88.71 ms | 346.16 s | 256 / 256 (100%) |
 
 ## [moonshotai/Kimi-K3 on G4](./models/kimik3/g4/README.md) — 4 Nodes, 32x RTX PRO 6000
 [Detailed Configuration & Results](./models/kimik3/g4/)
@@ -280,10 +294,11 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
 
 - `models/`: Model-specific SGLang job configurations and benchmarks.
   - `DeepSeekv3-2/`: Configs for DeepSeek-V3 and V2.5.
-  - `DeepSeekV4-Flash-0731/`: 2-node config and concurrency sweep for DeepSeek-V4-Flash.
+  - [`DeepSeekV4-Flash-0731/`](./models/DeepSeekV4-Flash-0731/README.md): 1-node and 2-node configs, Hyperdisk Balanced weight disk setup, and 1k/8k reasoning sweep (64–512 concurrency) reaching 3,881 tok/s.
   - `DeepSeekv4/`: DeepSeek-V4-Pro (1.6T) 2-node config — not yet optimized.
   - `GLM5.1/`: Optimized configurations and results for GLM-5.1.
   - [`GLM5.2/`](./models/GLM5.2/README.md): NVFP4 single-node and FP8 two-node recipes with benchmarks, plus the Blackwell (GB300) setup guide.
+  - [`GLM5.3/`](./models/GLM5.3/README.md): 2-node FP8 recipe with tuned SM120 MoE kernels, GSM8K validation (0.900/0.925), and Hyperdisk ML provisioning.
   - [`GLM5.3-Flash/`](./models/GLM5.3-Flash/README.md): FP8 single-node (TP8) recipe with tuned SM120 MoE kernels and a 12-run concurrency sweep.
   - `Gemma4-26B/`: Single-GPU (and TP=2) vLLM configs and concurrency sweeps for Gemma 4 26B.
   - `kimik3/`: Performance sweeps and ViBench/ViBench-Hard agentic results for Kimi-K3, on both GB200 and G4.
@@ -297,7 +312,9 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
 - [`sglang_gemini_cli/`](./sglang_gemini_cli/README.md): Point Gemini CLI at an SGLang endpoint to get an agentic coding harness on self-hosted models.
 - `gcp_g4_specs.md`: Detailed hardware and infrastructure specifications.
 
-## Key Updates (July–August 2026)
+## Key Updates (July–September 2026)
+- **[DeepSeek-V4-Flash Single-Node & Hyperdisk Setup](./models/DeepSeekV4-Flash-0731/README.md)**: Built single-node (8× RTX PRO 6000) serving with dedicated 500 GB Hyperdisk Balanced volume (`dsv4-flash-hyperdisk-balanced`), completely eliminating boot disk pressure and eviction. Completed 1K/8K reasoning sweep from C=64 to 512, reaching **3,880.89 output tok/s** (peak 6,122.00 tok/s).
+- **[GLM-5.3 2-Node Validation & MoE Tuning](./models/GLM5.3/README.md)**: Deployed 2-node FP8 recipe with tuned SM120 MoE config (`E=256,N=256,K=6144,fp8_w8a8`) and Hyperdisk ML provisioning. Correctness-verified with GSM8K (0.900/0.925 accuracy). Identified that `flashinfer_sparse_mla` suffers silent corruption and established `--dsa-prefill-backend trtllm --dsa-decode-backend trtllm` as the stable path.
 - **[GLM-5.3-Flash on one node](./models/GLM5.3-Flash/README.md)**: Got GLM-5.3-Flash serving on a single G4 node (8x RTX PRO 6000, TP8) — a model that would not run on SM120 out of the box. Required tilelang `num_stages=1` (99 KB smem cap) + DSA-backend patches and a custom-tuned SM120 fused-MoE kernel config (E=289/N=256). Peak **9,481.7 total tok/s** (`8k/1k` @ C=128) and **2,579.8 output tok/s** (`1k/8k` @ C=256); profiling shows TP8 AllReduce over PCIe is the dominant cost (~43%).
 - **Kimi-K3 on G4**: Got the ~1.5 TB Kimi-K3 checkpoint serving across 4 G4 nodes (32x RTX PRO 6000) over plain VPC ethernet with `PP=4 · TP=8`, Marlin MoE + SM120 patch, and HiCache host-RAM spillover — 583.58 peak output tok/s, decode 2× faster than the earlier baseline, with weights served from Hyperdisk ML.
 - **Gemma 4 26B Single-GPU Recipe**: Added a vLLM-based single-GPU (and TP=2) recipe for `gemma-4-26B-A4B` on G4, with a full 32 → 1024 concurrency sweep across four workload patterns — 4,055 output tok/s peak and sub-250 ms median TTFT through concurrency 256, plus a dedicated 10K-context sweep.
