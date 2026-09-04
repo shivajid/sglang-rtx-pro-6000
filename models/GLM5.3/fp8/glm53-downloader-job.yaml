@@ -1,0 +1,65 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: glm53-hdml-downloader
+  namespace: default
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector:
+        cloud.google.com/gke-nodepool: g4-384-np-0
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: downloader
+        image: lmsysorg/sglang:dev-cu13
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+          echo "=== Starting GLM-5.3 (full) Download to Hyperdisk ML (plain HTTP, Xet disabled) ==="
+          mkdir -p /data/GLM-5.3
+
+          echo "Downloading zai-org/GLM-5.3 (~753 GB) into /data/GLM-5.3 ..."
+          python3 -c '
+          import os
+          from huggingface_hub import snapshot_download
+
+          token = os.environ.get("HF_TOKEN")
+          local_dir = "/data/GLM-5.3"
+          print(f"Starting snapshot download to {local_dir}...")
+          path = snapshot_download(
+              repo_id="zai-org/GLM-5.3",
+              local_dir=local_dir,
+              token=token,
+              max_workers=16
+          )
+          print(f"Download complete: {path}")
+          '
+
+          echo "=== Download Complete! Checking contents ==="
+          ls -lah /data/GLM-5.3
+          echo "=== Disk Usage ==="
+          df -h /data
+          echo "=== Finished successfully ==="
+        env:
+        - name: HF_HUB_DISABLE_XET
+          value: "1"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        volumeMounts:
+        - name: model-disk
+          mountPath: /data
+      volumes:
+      - name: model-disk
+        persistentVolumeClaim:
+          claimName: glm53-hdml-writer-pvc

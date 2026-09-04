@@ -1,0 +1,154 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sglang-dsv4-flash-bench-1k8k
+  namespace: default
+  labels:
+    app: sglang-bench-1k8k
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: shd-gem-cpu-pool
+  restartPolicy: Never
+  volumes:
+  - name: results-vol
+    emptyDir: {}
+  containers:
+  - name: benchmark-runner
+    image: docker.io/lmsysorg/sglang:dev-cu13
+    imagePullPolicy: IfNotPresent
+    env:
+    - name: PYTHONUNBUFFERED
+      value: "1"
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-secret
+          key: HF_TOKEN
+    command:
+    - /bin/bash
+    - -c
+    - |
+      set -eo pipefail
+
+      API_URL="http://sglang-dsv4-flash-1node-serving:30000"
+      MODEL_NAME="/models/DeepSeek-V4-Flash-0731"
+      TOKENIZER="deepseek-ai/DeepSeek-V4-Flash-0731"
+      CONCURRENCIES=(64 128 256)
+      OUTPUT_DIR="/results"
+
+      mkdir -p "${OUTPUT_DIR}"
+
+      echo "=========================================================================="
+      echo "🚀 SGLANG OFFICIAL BENCHMARK SWEEP (sglang.bench_serving)"
+      echo "Endpoint      : ${API_URL}"
+      echo "Model         : ${MODEL_NAME}"
+      echo "Tokenizer     : ${TOKENIZER}"
+      echo "Workload      : 1K Input / 8K Output (Reasoning & Generation Heavy)"
+      echo "Concurrencies : ${CONCURRENCIES[*]}"
+      echo "Client Pool   : shd-gem-cpu-pool"
+      echo "=========================================================================="
+
+      echo ""
+      echo "⏳ Testing connectivity to SGLang endpoint..."
+      while ! curl -s "${API_URL}/v1/models" > /dev/null; do
+          echo "Waiting for SGLang server at ${API_URL}..."
+          sleep 3
+      done
+      echo "✅ Server reachable! Available models:"
+      curl -s "${API_URL}/v1/models" | python3 -m json.tool
+
+      echo ""
+      echo "🔥 Warmup (2 requests)..."
+      python3 -m sglang.bench_serving \
+          --backend sglang \
+          --base-url "${API_URL}" \
+          --model "${MODEL_NAME}" \
+          --tokenizer "${TOKENIZER}" \
+          --dataset-name random \
+          --random-input-len 1024 \
+          --random-output-len 256 \
+          --random-range-ratio 0.0 \
+          --num-prompts 2 \
+          --max-concurrency 2 \
+          --output-file "${OUTPUT_DIR}/warmup.json" \
+          --output-details || echo "Warmup step completed."
+      echo "✅ Warmup finished."
+
+      for c in "${CONCURRENCIES[@]}"; do
+          NUM_PROMPTS=$((c * 2))
+          RESULT_FILE="${OUTPUT_DIR}/result_1k_8k_c${c}.json"
+
+          echo ""
+          echo "=========================================================================="
+          echo "▶️  [Concurrency ${c}] Running 1K/8K (Input: 1024, Output: 8192) with ${NUM_PROMPTS} prompts..."
+          echo "=========================================================================="
+
+          python3 -m sglang.bench_serving \
+              --backend sglang \
+              --base-url "${API_URL}" \
+              --model "${MODEL_NAME}" \
+              --tokenizer "${TOKENIZER}" \
+              --dataset-name random \
+              --random-input-len 1024 \
+              --random-output-len 8192 \
+              --random-range-ratio 0.0 \
+              --num-prompts "${NUM_PROMPTS}" \
+              --max-concurrency "${c}" \
+              --output-file "${RESULT_FILE}" \
+              --seed 42 \
+              --request-rate inf \
+              --output-details
+
+          echo "✅ Concurrency ${c} completed! Results stored in ${RESULT_FILE}"
+          sleep 5
+      done
+
+      echo ""
+      echo "=========================================================================="
+      echo "📊 1K/8K CONCURRENCY SWEEP SUMMARY (DEEPSEEK-V4-FLASH ON RTX PRO 6000)"
+      echo "=========================================================================="
+
+      python3 - << 'PYEOF'
+      import json, glob, os
+
+      files = sorted(glob.glob("/results/result_1k_8k_c*.json"))
+      rows = []
+
+      for f in files:
+          try:
+              with open(f) as fp:
+                  d = json.load(fp)
+              conc = d.get("max_concurrency", "N/A")
+              prompts = d.get("completed", d.get("num_prompts", "N/A"))
+              out_tps = d.get("output_throughput", 0.0)
+              req_tps = d.get("request_throughput", 0.0)
+              tot_tps = d.get("total_throughput", 0.0)
+              mean_ttft = d.get("mean_ttft_ms", 0.0)
+              p99_ttft = d.get("p99_ttft_ms", 0.0)
+              mean_tpot = d.get("mean_tpot_ms", 0.0)
+              mean_lat = d.get("mean_e2e_latency_ms", 0.0) / 1000.0
+
+              rows.append((conc, prompts, out_tps, tot_tps, req_tps, mean_ttft, p99_ttft, mean_tpot, mean_lat))
+          except Exception as e:
+              print(f"Error reading {f}: {e}")
+
+      print("\n| Concurrency | Completed Requests | Output Tok/s | Total Tok/s | Req/s | Mean TTFT (ms) | P99 TTFT (ms) | Mean TPOT (ms) | Avg Latency (s) |")
+      print("| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
+      for r in rows:
+          print(f"| **{r[0]}** | {r[1]} | **{r[2]:.2f}** | {r[3]:.2f} | {r[4]:.2f} | {r[5]:.1f} | {r[6]:.1f} | {r[7]:.2f} | {r[8]:.2f} |")
+      PYEOF
+
+      echo ""
+      echo "🎉 ALL BENCHMARKS COMPLETED SUCCESSFULLY!"
+      echo "To keep results accessible, staying active..."
+      sleep infinity
+    volumeMounts:
+    - name: results-vol
+      mountPath: /results
+    resources:
+      requests:
+        cpu: "8"
+        memory: "16Gi"
+      limits:
+        cpu: "32"
+        memory: "64Gi"

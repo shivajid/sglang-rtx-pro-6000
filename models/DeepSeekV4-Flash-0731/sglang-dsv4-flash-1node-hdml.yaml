@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sglang-sa
+  namespace: default
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sglang-dsv4-flash-1node
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sglang-dsv4-flash-1node
+  serviceName: "sglang-dsv4-flash-1node"
+  template:
+    metadata:
+      labels:
+        app: sglang-dsv4-flash-1node
+    spec:
+      serviceAccountName: sglang-sa
+      hostNetwork: true
+      hostIPC: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        cloud.google.com/gke-nodepool: shd-gem-g4-gpu-pool # G4 8x RTX PRO 6000 Blackwell nodepool (shd-gem-cluster)
+      tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
+      containers:
+      - name: sglang-container
+        image: docker.io/lmsysorg/sglang:dev-cu13
+        imagePullPolicy: Always
+        securityContext:
+          privileged: true
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          echo "Starting SGLang Single-Node for DeepSeek-V4-Flash from Hyperdisk ML..."
+
+          python3 -m sglang.launch_server \
+              --model-path /models/DeepSeek-V4-Flash-0731 \
+              --trust-remote-code \
+              --tensor-parallel-size 8 \
+              --dp-size 8 \
+              --enable-dp-attention \
+              --moe-runner-backend flashinfer_mxfp4 \
+              --kv-cache-dtype fp8_e4m3 \
+              --disable-custom-all-reduce \
+              --mem-fraction-static 0.85 \
+              --cuda-graph-max-bs-decode 32 \
+              --max-running-requests 768 \
+              --chunked-prefill-size 16384 \
+              --context-length 131072 \
+              --page-size 256 \
+              --enable-mixed-chunk \
+              --reasoning-parser deepseek-v3 \
+              --tool-call-parser deepseekv32 \
+              --enable-metrics \
+              --host 0.0.0.0 \
+              --port 30000
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        # Single-node: no inter-node NCCL socket tuning needed (TP8 intra-node only).
+        - name: NCCL_DEBUG
+          value: WARN
+        - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
+          value: "18000"
+        - name: SGLANG_ENABLE_SPEC_V2
+          value: "1"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: SGLANG_ENABLE_DEEP_GEMM
+          value: "0"
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        - name: SGLANG_DISABLE_DEEP_GEMM
+          value: "1"
+        - name: FLASHINFER_DISABLE_VERSION_CHECK
+          value: "1"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /root/.cache/flashinfer
+          name: flashinfer-cache
+        - mountPath: /models
+          name: model-disk
+          readOnly: true
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+      - name: flashinfer-cache
+        emptyDir: {}
+      - name: model-disk
+        persistentVolumeClaim:
+          claimName: dsv4-flash-hdml-pvc
+---
+# Serving Service (single pod, routes directly to pod 0)
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-dsv4-flash-1node-serving
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: sglang-dsv4-flash-1node
+  ports:
+  - name: http
+    port: 30000
+    targetPort: 30000
+  - name: metrics
+    port: 8080
+    targetPort: 8080

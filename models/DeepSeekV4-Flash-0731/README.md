@@ -50,11 +50,44 @@ Three workload patterns, streaming client on an isolated benchmark node pool:
 
 Full per-concurrency tables, TTFT/TPOT charts, and analysis: **[results/benchamrk_sweep_report.md](./results/benchamrk_sweep_report.md)**
 
+---
+
+## Single-Node (8× RTX PRO 6000) Serving & 1K/8K Benchmarks
+
+In addition to 2-node serving, DeepSeek-V4-Flash-0731 can be served on a **single node** (8× NVIDIA RTX PRO 6000 GPUs, `TP=8`, `DP=8` attention) mounted to a dedicated 500 GB Hyperdisk Balanced volume (`dsv4-flash-hyperdisk-balanced`) to prevent boot disk pressure.
+
+### Single-Node Configuration
+
+| Item | Value |
+|------|-------|
+| Model | `deepseek-ai/DeepSeek-V4-Flash-0731` |
+| Hardware | 1× `g4-standard-384` (8× RTX PRO 6000, 96 GB each) |
+| Parallelism | TP=8 · DP=8 with `--enable-dp-attention` |
+| Storage | 500 GB Hyperdisk Balanced mounted at `/models/DeepSeek-V4-Flash-0731` |
+| Manifest | [`sglang-dsv4-flash-1node-hdml.yaml`](./sglang-dsv4-flash-1node-hdml.yaml) |
+
+### 1K / 8K Reasoning Concurrency Sweep (Single-Node)
+
+Benchmarked with `sglang.bench_serving` from the cluster's isolated CPU pool (`shd-gem-cpu-pool`):
+
+| Concurrency | Output tok/s | Peak tok/s | Mean TTFT | Mean TPOT | Avg Latency | Completed Req |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **64** | 1,440.93 | — | 1,663.9 ms | 33.98 ms | 148.99 s | 32 / 32 (100%) |
+| **128** | 2,230.09 | — | 1,982.0 ms | 41.78 ms | 165.03 s | 48 / 48 (100%) |
+| **256** | 2,676.52 | 4,474.00 | 2,892.7 ms | 82.89 ms | 324.25 s | 128 / 128 (100%) |
+| **512** | 3,880.89 | 6,122.00 | 10,460.8 ms | 88.71 ms | 346.16 s | 256 / 256 (100%) |
+
+---
+
 ## Files
 
 | File | Purpose |
 |------|---------|
 | [`sglang-dsv4-flash-2node.yaml`](./sglang-dsv4-flash-2node.yaml) | 2-node StatefulSet serving deployment |
+| [`sglang-dsv4-flash-1node-hdml.yaml`](./sglang-dsv4-flash-1node-hdml.yaml) | 1-node StatefulSet serving deployment (Hyperdisk volume) |
+| [`sglang-dsv4-flash-1node.yaml`](./sglang-dsv4-flash-1node.yaml) | 1-node StatefulSet serving deployment (emptyDir / direct download) |
+| [`model_weight_disk/`](./model_weight_disk/) | Hyperdisk PV/PVC writer, downloader Job, and RO manifests |
+| [`benchmarks/`](./benchmarks/) | 1K/8K benchmark jobs (sweep 64-256 and 512 concurrency) |
 | [`sglang-dsv4-flash-benchmark-runner.yaml`](./sglang-dsv4-flash-benchmark-runner.yaml) | Benchmark client pod (isolated CPU pool) |
 | [`results/benchamrk_sweep_report.md`](./results/benchamrk_sweep_report.md) | Full sweep report with charts |
 | [`results/charts/`](./results/charts/) | Throughput / TTFT / TPOT PNG charts |
@@ -63,11 +96,14 @@ Full per-concurrency tables, TTFT/TPOT charts, and analysis: **[results/benchamr
 ## Reproduce
 
 ```bash
-# 1. Deploy the server and wait for "The server is fired up and ready!"
-kubectl apply -f models/DeepSeekV4-Flash-0731/sglang-dsv4-flash-2node.yaml
+# Deploy single-node serving with Hyperdisk mount
+kubectl apply -f models/DeepSeekV4-Flash-0731/sglang-dsv4-flash-1node-hdml.yaml
 
-# 2. Run the sweep from the isolated benchmark client
-kubectl apply -f models/DeepSeekV4-Flash-0731/sglang-dsv4-flash-benchmark-runner.yaml
+# Run 1K/8K benchmark sweep (64, 128, 256 concurrency)
+kubectl apply -f models/DeepSeekV4-Flash-0731/benchmarks/bench-1k8k-sweep.yaml
+
+# Run 1K/8K benchmark at 512 concurrency
+kubectl apply -f models/DeepSeekV4-Flash-0731/benchmarks/bench-1k8k-512c.yaml
 ```
 
 ## Related

@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: glm53-image-build
+  namespace: default
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 7200
+  template:
+    spec:
+      restartPolicy: Never
+      # CPU pool — Kaniko is daemonless, no GPU needed.
+      nodeSelector:
+        cloud.google.com/gke-nodepool: cpu-bench-pool
+      containers:
+      - name: kaniko
+        image: gcr.io/kaniko-project/executor:latest
+        imagePullPolicy: IfNotPresent
+        args:
+        - --context=gs://northam-ce-mlai-tpu-glm53-artifacts/docker-ctx.tar.gz
+        - --dockerfile=Dockerfile
+        # Push to Artifact Registry (glm53 repo) AND Docker Hub (aurius/) in one build.
+        - --destination=us-central1-docker.pkg.dev/northam-ce-mlai-tpu/glm53/glm53-fp8:sm120-moe-tuned-v1
+        - --destination=aurius/glm53-fp8:sm120-moe-tuned-v1
+        - --cache=true
+        - --compressed-caching=false
+        - --snapshot-mode=redo
+        - --log-format=text
+        resources:
+          requests:
+            cpu: "4"
+            memory: "8Gi"
+          limits:
+            cpu: "8"
+            memory: "16Gi"
+        volumeMounts:
+        - name: docker-config
+          mountPath: /kaniko/.docker
+          readOnly: true
+      volumes:
+      - name: docker-config
+        secret:
+          secretName: kaniko-docker-config
+          items:
+          - key: config.json
+            path: config.json

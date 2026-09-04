@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: glm53-hdml-ro-pv
+spec:
+  storageClassName: ""
+  capacity:
+    storage: 1000Gi
+  accessModes:
+    - ReadOnlyMany
+  claimRef:
+    namespace: default
+    name: glm53-hdml-pvc
+  csi:
+    driver: pd.csi.storage.gke.io
+    volumeHandle: projects/northam-ce-mlai-tpu/zones/us-central1-f/disks/glm53-hyperdisk-ml
+    fsType: ext4
+    readOnly: true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: glm53-hdml-pvc
+  namespace: default
+spec:
+  storageClassName: ""
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 1000Gi
+  volumeName: glm53-hdml-ro-pv

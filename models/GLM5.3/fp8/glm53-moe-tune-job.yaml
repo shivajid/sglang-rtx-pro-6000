@@ -1,0 +1,105 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: glm53-moe-tune
+  namespace: default
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      # Server is scaled to 0, so the np-0 nodes are free for tuning.
+      nodeSelector:
+        cloud.google.com/gke-nodepool: g4-384-np-0
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      hostIPC: true
+      containers:
+      - name: moe-tune
+        image: lmsysorg/sglang:dev-cu13
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        - |
+          run_tune() {
+            echo "=== GLM-5.3 fused-MoE Triton tuning (E=256,N=256,K=6144, fp8_w8a8, SM120) ==="
+            OUT=/tmp/moe-tuned
+            mkdir -p "$OUT"
+
+            echo "Installing ray (tuner dependency, not in image)..."
+            python3 -m pip install -q ray
+
+            # Model config is read from the RO Hyperdisk mount. The tuner writes the best-config
+            # JSON into its CWD (/tmp/moe-tuned); we then push it to GCS for durable persistence.
+            cd "$OUT" || return 1
+            python3 /sgl-workspace/sglang/benchmark/kernels/fused_moe_triton/tuning_fused_moe_triton.py \
+              --model /models/GLM-5.3 \
+              --tp-size 8 \
+              --dtype fp8_w8a8 \
+              --disable-shared-experts-fusion \
+              --tune || return 1
+
+            echo "=== Tuning finished. Files in $OUT: ==="
+            ls -la "$OUT"
+            echo "=== Config contents (dumped to log for recovery): ==="
+            for f in "$OUT"/E=256,N=256,*fp8_w8a8*.json; do
+              echo "--- $f ---"; cat "$f"; echo
+            done
+
+            echo "=== Uploading config to GCS ==="
+            GCS=gs://northam-ce-mlai-tpu-glm53-artifacts/moe-tuned
+            for f in "$OUT"/E=256,N=256,*fp8_w8a8*.json; do
+              [ -e "$f" ] || continue
+              gcloud storage cp "$f" "$GCS/$(basename "$f")" 2>&1 || \
+                gsutil cp "$f" "$GCS/$(basename "$f")" 2>&1 || \
+                echo "WARN: GCS upload failed for $f"
+            done
+            echo "=== GCS listing: ==="
+            gcloud storage ls "$GCS/" 2>&1 || gsutil ls "$GCS/" 2>&1 || true
+          }
+
+          run_tune
+          RC=$?
+          if [ $RC -ne 0 ]; then
+            echo "!!! TUNE FAILED (rc=$RC). Holding pod for artifact recovery (kubectl exec). !!!"
+            ls -la /tmp/moe-tuned 2>/dev/null || true
+          else
+            echo "=== DONE (success). Holding pod so upload confirmation/files stay accessible. ==="
+          fi
+          # Never exit: keep the pod Running so results are always recoverable.
+          # Delete the job manually once the config is safely in GCS.
+          sleep infinity
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /models
+          name: model-ro
+          readOnly: true
+      volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+        name: dshm
+      # Read-only mount of the Hyperdisk for the model config.json (Hyperdisk ML is RO-only).
+      - name: model-ro
+        persistentVolumeClaim:
+          claimName: glm53-hdml-pvc
+          readOnly: true

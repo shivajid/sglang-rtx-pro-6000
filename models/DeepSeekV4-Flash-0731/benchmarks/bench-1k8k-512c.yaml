@@ -1,0 +1,128 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sglang-dsv4-flash-bench-512c
+  namespace: default
+  labels:
+    app: sglang-bench-512c
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: shd-gem-cpu-pool
+  restartPolicy: Never
+  volumes:
+  - name: results-vol
+    emptyDir: {}
+  containers:
+  - name: benchmark-runner
+    image: docker.io/lmsysorg/sglang:dev-cu13
+    imagePullPolicy: IfNotPresent
+    env:
+    - name: PYTHONUNBUFFERED
+      value: "1"
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-secret
+          key: HF_TOKEN
+    command:
+    - /bin/bash
+    - -c
+    - |
+      set -eo pipefail
+
+      API_URL="http://sglang-dsv4-flash-1node-serving:30000"
+      MODEL_NAME="/models/DeepSeek-V4-Flash-0731"
+      TOKENIZER="deepseek-ai/DeepSeek-V4-Flash-0731"
+      CONCURRENCY=512
+      NUM_PROMPTS=512
+      OUTPUT_DIR="/results"
+
+      mkdir -p "${OUTPUT_DIR}"
+
+      echo "=========================================================================="
+      echo "🚀 SGLANG 512 CONCURRENCY BENCHMARK (1K/8K WORKLOAD)"
+      echo "Endpoint      : ${API_URL}"
+      echo "Model         : ${MODEL_NAME}"
+      echo "Tokenizer     : ${TOKENIZER}"
+      echo "Workload      : 1K Input / 8K Output (Reasoning & Generation Heavy)"
+      echo "Concurrency   : ${CONCURRENCY}"
+      echo "Prompts       : ${NUM_PROMPTS}"
+      echo "Client Pool   : shd-gem-cpu-pool"
+      echo "=========================================================================="
+
+      echo ""
+      echo "⏳ Testing connectivity to SGLang endpoint..."
+      while ! curl -s "${API_URL}/v1/models" > /dev/null; do
+          echo "Waiting for SGLang server at ${API_URL}..."
+          sleep 3
+      done
+      echo "✅ Server reachable! Available models:"
+      curl -s "${API_URL}/v1/models" | python3 -m json.tool
+
+      RESULT_FILE="${OUTPUT_DIR}/result_1k_8k_c512.json"
+
+      echo ""
+      echo "=========================================================================="
+      echo "▶️  [Concurrency 512] Launching 1K/8K benchmark with ${NUM_PROMPTS} prompts..."
+      echo "=========================================================================="
+
+      python3 -m sglang.bench_serving \
+          --backend sglang \
+          --base-url "${API_URL}" \
+          --model "${MODEL_NAME}" \
+          --tokenizer "${TOKENIZER}" \
+          --dataset-name random \
+          --random-input-len 1024 \
+          --random-output-len 8192 \
+          --random-range-ratio 0.0 \
+          --num-prompts "${NUM_PROMPTS}" \
+          --max-concurrency "${CONCURRENCY}" \
+          --output-file "${RESULT_FILE}" \
+          --seed 42 \
+          --request-rate inf \
+          --output-details
+
+      echo "✅ Concurrency 512 completed! Results stored in ${RESULT_FILE}"
+
+      echo ""
+      echo "=========================================================================="
+      echo "📊 512 CONCURRENCY BENCHMARK RESULTS"
+      echo "=========================================================================="
+
+      python3 - << 'PYEOF'
+      import json, os
+
+      f = "/results/result_1k_8k_c512.json"
+      try:
+          with open(f) as fp:
+              d = json.load(fp)
+          conc = d.get("max_concurrency", "512")
+          prompts = d.get("completed", d.get("num_prompts", "N/A"))
+          out_tps = d.get("output_throughput", 0.0)
+          tot_tps = d.get("total_throughput", 0.0)
+          req_tps = d.get("request_throughput", 0.0)
+          mean_ttft = d.get("mean_ttft_ms", 0.0)
+          p99_ttft = d.get("p99_ttft_ms", 0.0)
+          mean_tpot = d.get("mean_tpot_ms", 0.0)
+          mean_lat = d.get("mean_e2e_latency_ms", 0.0) / 1000.0
+
+          print("\n| Concurrency | Completed Requests | Output Tok/s | Total Tok/s | Req/s | Mean TTFT (ms) | P99 TTFT (ms) | Mean TPOT (ms) | Avg Latency (s) |")
+          print("| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
+          print(f"| **{conc}** | {prompts} | **{out_tps:.2f}** | {tot_tps:.2f} | {req_tps:.2f} | {mean_ttft:.1f} | {p99_ttft:.1f} | {mean_tpot:.2f} | {mean_lat:.2f} |")
+      except Exception as e:
+          print(f"Error reading {f}: {e}")
+      PYEOF
+
+      echo ""
+      echo "🎉 512 CONCURRENCY TEST COMPLETED!"
+      sleep infinity
+    volumeMounts:
+    - name: results-vol
+      mountPath: /results
+    resources:
+      requests:
+        cpu: "16"
+        memory: "32Gi"
+      limits:
+        cpu: "48"
+        memory: "96Gi"

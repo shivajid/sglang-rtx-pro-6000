@@ -1,0 +1,65 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dsv4-flash-hdml-downloader
+  namespace: default
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector:
+        cloud.google.com/gke-nodepool: shd-gem-g4-gpu-pool
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: downloader
+        image: docker.io/lmsysorg/sglang:dev-cu13
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+          echo "=== Starting DeepSeek-V4-Flash-0731 Download to Hyperdisk ML ==="
+          mkdir -p /data/DeepSeek-V4-Flash-0731
+
+          echo "Downloading deepseek-ai/DeepSeek-V4-Flash-0731 into /data/DeepSeek-V4-Flash-0731 ..."
+          python3 -c '
+          import os
+          from huggingface_hub import snapshot_download
+
+          token = os.environ.get("HF_TOKEN")
+          local_dir = "/data/DeepSeek-V4-Flash-0731"
+          print(f"Starting snapshot download to {local_dir}...")
+          path = snapshot_download(
+              repo_id="deepseek-ai/DeepSeek-V4-Flash-0731",
+              local_dir=local_dir,
+              token=token,
+              max_workers=16
+          )
+          print(f"Download complete: {path}")
+          '
+
+          echo "=== Download Complete! Checking contents ==="
+          ls -lah /data/DeepSeek-V4-Flash-0731
+          echo "=== Disk Usage ==="
+          df -h /data
+          echo "=== Finished successfully ==="
+        env:
+        - name: HF_HUB_DISABLE_XET
+          value: "1"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+        volumeMounts:
+        - name: model-disk
+          mountPath: /data
+      volumes:
+      - name: model-disk
+        persistentVolumeClaim:
+          claimName: dsv4-flash-hdml-writer-pvc

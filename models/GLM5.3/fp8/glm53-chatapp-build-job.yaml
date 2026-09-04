@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: glm53-chatapp-build
+  namespace: default
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        cloud.google.com/gke-nodepool: cpu-bench-pool
+      containers:
+      - name: kaniko
+        image: gcr.io/kaniko-project/executor:latest
+        imagePullPolicy: IfNotPresent
+        args:
+        - --context=gs://northam-ce-mlai-tpu-glm53-artifacts/chatapp-ctx.tar.gz
+        - --dockerfile=Dockerfile
+        - --destination=us-central1-docker.pkg.dev/northam-ce-mlai-tpu/glm53/glm53-console:0.1.0
+        - --cache=true
+        - --snapshot-mode=redo
+        - --log-format=text
+        resources:
+          requests:
+            cpu: "2"
+            memory: "4Gi"
+          limits:
+            cpu: "4"
+            memory: "8Gi"
+        volumeMounts:
+        - name: docker-config
+          mountPath: /kaniko/.docker
+          readOnly: true
+      volumes:
+      - name: docker-config
+        secret:
+          secretName: kaniko-docker-config
+          items:
+          - key: config.json
+            path: config.json
