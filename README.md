@@ -16,6 +16,10 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 - **Architecture Details**: [Technical Specifications: GCP G4](./gcp_g4_specs.md)
 - **Serving Framework**: [SGLang](https://github.com/sgl-project/sglang) (`dev-cu13`, `0.5.10.post1`)
 
+## Tips to use this repo
+
+In the new age on Agents. I do not suggest that you browse and read my repo for 10s of recipes. I update this frequently and continue to update them. If you use AntiGravity, Codex, Claude Code. It is best to let your Agents do the work for you. Clone my repo, and give a target Google Project and let it do the driving. My recipes are GKE based mostly, which I plan to change.
+
 ## Performance Benchmarks (Latest)
 
 *Rows are ordered by benchmark date, newest first.*
