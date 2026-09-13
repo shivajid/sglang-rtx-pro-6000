@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepseek-recipe-gateway
+  namespace: default
+  labels:
+    app: deepseek-recipe-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deepseek-recipe-gateway
+  template:
+    metadata:
+      labels:
+        app: deepseek-recipe-gateway
+    spec:
+      containers:
+      - name: gateway
+        image: us-east5-docker.pkg.dev/northam-ce-mlai-tpu/gke-llm/deepseek-recipe-gateway:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: SGLANG_UPSTREAM_URL
+          value: "http://sglang-dsv41-flash-svc.default.svc.cluster.local:30000"
+        resources:
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+          limits:
+            cpu: "4"
+            memory: "8Gi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 20
+          timeoutSeconds: 5
+        volumeMounts:
+        - name: gateway-code
+          mountPath: /app/main.py
+          subPath: main.py
+      volumes:
+      - name: gateway-code
+        configMap:
+          name: deepseek-recipe-gateway-code
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepseek-recipe-gateway-svc
+  namespace: default
+  labels:
+    app: deepseek-recipe-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: deepseek-recipe-gateway
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000

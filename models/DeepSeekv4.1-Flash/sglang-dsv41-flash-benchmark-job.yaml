@@ -1,0 +1,73 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sglang-dsv41-flash-benchmark-job
+  namespace: default
+  labels:
+    app: sglang-dsv41-flash-benchmark
+    benchmark.sglang.ai/model: deepseek-v4.1-flash
+    benchmark.sglang.ai/workload: serving
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: sglang-dsv41-flash-benchmark
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        cloud.google.com/gke-nodepool: gpu-spot-ssd
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      - key: cloud.google.com/gke-spot
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: benchmark-runner
+        image: lmsysorg/sglang:qwen38flashnext
+        imagePullPolicy: IfNotPresent
+        command:
+        - python3
+        - -m
+        - sglang.bench_serving
+        args:
+        - --backend
+        - sglang
+        - --base-url
+        - http://sglang-dsv41-flash-svc:30000
+        - --model
+        - deepseek-ai/DeepSeek-V4.1-Flash
+        - --dataset-name
+        - random
+        - --random-input-len
+        - "1024"
+        - --random-output-len
+        - "8192"
+        - --random-range-ratio
+        - "0.0"
+        - --num-prompts
+        - "64"
+        - --max-concurrency
+        - "32"
+        - --seed
+        - "42"
+        - --request-rate
+        - inf
+        - --output-file
+        - /results/bench_output.json
+        - --output-details
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            cpu: "16"
+            memory: 32Gi
+        volumeMounts:
+        - name: results-vol
+          mountPath: /results
+      volumes:
+      - name: results-vol
+        emptyDir: {}

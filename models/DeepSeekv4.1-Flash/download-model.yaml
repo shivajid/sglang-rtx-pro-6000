@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dsv41-downloader
+  namespace: default
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    cloud.google.com/gke-nodepool: gpu-spot-ssd
+  tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+  - key: cloud.google.com/gke-spot
+    operator: Exists
+    effect: NoSchedule
+  containers:
+  - name: downloader
+    image: lmsysorg/sglang:dev-dsv41
+    imagePullPolicy: IfNotPresent
+    env:
+    - name: HF_HOME
+      value: "/models/.cache"
+    - name: HF_HUB_ENABLE_HF_TRANSFER
+      value: "0"
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-secret
+          key: HF_TOKEN
+          optional: true
+    command:
+    - python3
+    - -u
+    - -c
+    - |
+      import os, sys, time
+      from huggingface_hub import snapshot_download
+
+      token = os.environ.get("HF_TOKEN")
+      model_id = 'deepseek-ai/DeepSeek-V4.1-Flash'
+      target_dir = '/models/DeepSeek-V4.1-Flash'
+      cache_dir = '/models/.cache'
+
+      os.makedirs(target_dir, exist_ok=True)
+      os.makedirs(cache_dir, exist_ok=True)
+
+      print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Starting snapshot_download for {model_id} into {target_dir}...")
+      t0 = time.time()
+      snapshot_download(
+          repo_id=model_id,
+          local_dir=target_dir,
+          cache_dir=cache_dir,
+          token=token,
+          max_workers=16,
+          ignore_patterns=[
+              "*.pdf",
+              "assets/*",
+              "encoding/*",
+              "evaluation/*",
+              "inference/*",
+          ],
+      )
+      elapsed = time.time() - t0
+      print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Download completed in {elapsed:.2f}s ({elapsed/60:.2f}m)!")
+    resources:
+      requests:
+        cpu: "16"
+        memory: "32Gi"
+      limits:
+        cpu: "64"
+        memory: "64Gi"
+    volumeMounts:
+    - name: model-dir
+      mountPath: /models
+  volumes:
+  - name: model-dir
+    persistentVolumeClaim:
+      claimName: dsv41-flash-model-pvc

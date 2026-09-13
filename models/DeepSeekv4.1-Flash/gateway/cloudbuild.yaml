@@ -1,0 +1,14 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'build',
+    '-t', 'us-east5-docker.pkg.dev/northam-ce-mlai-tpu/gke-llm/deepseek-recipe-gateway:latest',
+    '-t', 'gcr.io/northam-ce-mlai-tpu/deepseek-recipe-gateway:latest',
+    '.'
+  ]
+images:
+- 'us-east5-docker.pkg.dev/northam-ce-mlai-tpu/gke-llm/deepseek-recipe-gateway:latest'
+- 'gcr.io/northam-ce-mlai-tpu/deepseek-recipe-gateway:latest'
+options:
+  machineType: 'E2_HIGHCPU_8'
+timeout: '1200s'

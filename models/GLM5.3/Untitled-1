@@ -1,0 +1,1 @@
+curl localhost:8000/v1/completions -H 'Content-Type: application/json'  -d '{"model":"Qwen/Qwen3.8-27B","prompt":"Hello","max_tokens":32}'

@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: dsv41-flash-model-pv
+spec:
+  capacity:
+    storage: 1000Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  csi:
+    driver: pd.csi.storage.gke.io
+    volumeHandle: projects/northam-ce-mlai-tpu/zones/us-east5-a/disks/dsv41-flash-model-disk
+    fsType: ext4
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: topology.gke.io/zone
+          operator: In
+          values:
+          - us-east5-a
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dsv41-flash-model-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 1000Gi
+  volumeName: dsv41-flash-model-pv
