@@ -17,33 +17,6 @@ This repository provides the production serving recipe, Kubernetes deployment ma
 
 ---
 
-## 8K / 1K Prefill-Heavy Benchmark Sweep
-
-Evaluation profile: 8,192 input tokens, 1,024 output tokens across concurrencies $C \in [1, 8, 16, 32, 64, 128]$.
-
-| Concurrency | Output tok/s | Total tok/s | Mean TTFT | Mean TPOT | Completed Req |
-|:---:|:---:|:---:|:---:|:---:|:---:|
-| 1 | 28.5 | 256.5 | 375.0 ms | 32.4 ms | 16 / 16 (100%) |
-| 8 | 215.0 | 1935.0 | 550.0 ms | 35.2 ms | 16 / 16 (100%) |
-| 16 | 410.2 | 3691.8 | 750.0 ms | 38.4 ms | 32 / 32 (100%) |
-| 32 | 780.5 | 7024.5 | 1150.0 ms | 44.8 ms | 64 / 64 (100%) |
-| 64 | 1450.8 | 13057.2 | 1950.0 ms | 57.6 ms | 128 / 128 (100%) |
-| 128 | 2680.4 | 24123.6 | 3550.0 ms | 83.2 ms | 256 / 256 (100%) |
-
----
-
-## 1K / 8K Reasoning & Generation Heavy Benchmark Sweep
-
-Evaluation profile: 1,024 input tokens, 8,192 output tokens across concurrencies $C \in [1, 8, 16, 32, 64, 128]$.
-
-| Concurrency | Output tok/s | Total tok/s | Mean TTFT | Mean TPOT | Completed Req |
-|:---:|:---:|:---:|:---:|:---:|:---:|
-| 1 | 22.0 | 24.7 | 160.0 ms | 45.5 ms | 16 / 16 (100%) |
-| 8 | 165.4 | 186.0 | 230.0 ms | 49.0 ms | 16 / 16 (100%) |
-| 16 | 315.8 | 355.2 | 310.0 ms | 53.0 ms | 32 / 32 (100%) |
-| 32 | 605.2 | 680.8 | 470.0 ms | 61.0 ms | 64 / 64 (100%) |
-| 64 | 1120.6 | 1260.6 | 790.0 ms | 77.0 ms | 128 / 128 (100%) |
-| 128 | 2010.5 | 2261.8 | 1430.0 ms | 109.0 ms | 256 / 256 (100%) |
 
 ---
 
