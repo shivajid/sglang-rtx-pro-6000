@@ -1,0 +1,66 @@
+# Baseline A: SGLang serving the Clef *backbone only* (Qwen3_5ForConditionalGeneration).
+# Measures the prefill ceiling of an optimized engine on one RTX PRO 6000 using
+# max_new_tokens=1 requests with the same token lengths as the Clef workloads.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sglang-clef-backbone-fp8
+  labels: {app: sglang-clef-backbone}
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: clef-g4-pool
+    kubernetes.io/hostname: gke-shd-gem-cluster-clef-g4-pool-1e28c4e2-vzbt
+  tolerations:
+  - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  terminationGracePeriodSeconds: 5
+  containers:
+  - name: sglang
+    image: lmsysorg/sglang:v0.5.21-cu130
+    command: ["bash", "-c"]
+    args:
+    - |
+      set -e
+      nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
+      python3 -c "import sglang, torch; print('sglang', sglang.__version__, 'torch', torch.__version__, torch.version.cuda)"
+      if [ ! -f /cache/models/clef/.download_complete ]; then
+        python3 -c "from huggingface_hub import snapshot_download; snapshot_download('Cloudflare/clef', local_dir='/cache/models/clef', max_workers=16)"
+        touch /cache/models/clef/.download_complete
+      fi
+      mkdir -p /cache/models/clef-backbone
+      for f in /cache/models/clef/*; do b=$(basename "$f"); case "$b" in joint_head*|joint_schema_model.py) ;; *) ln -sfn "$f" "/cache/models/clef-backbone/$b";; esac; done
+      exec python3 -m sglang.launch_server \
+        --model-path /cache/models/clef-backbone \
+        --served-model-name clef-backbone \
+        --host 0.0.0.0 --port 30000 \
+        --tp 1 \
+        --mem-fraction-static 0.85 \
+        --context-length 32768 \
+        --chunked-prefill-size ${CHUNKED_PREFILL:-16384} \
+        --max-prefill-tokens ${MAX_PREFILL:-16384} \
+        --disable-radix-cache \
+        --disable-cuda-graph \
+        --enable-metrics \
+        ${EXTRA_ARGS:-}
+    env:
+    - {name: HF_HOME, value: /cache/hf}
+    - {name: PYTORCH_CUDA_ALLOC_CONF, value: "expandable_segments:True"}
+    - {name: OMP_NUM_THREADS, value: "16"}
+    - {name: CHUNKED_PREFILL, value: "16384"}
+    - {name: MAX_PREFILL, value: "16384"}
+    - {name: EXTRA_ARGS, value: "--quantization fp8"}
+    - name: HF_TOKEN
+      valueFrom: {secretKeyRef: {name: hf-secret, key: HF_TOKEN, optional: true}}
+    resources:
+      limits: {nvidia.com/gpu: 1}
+      requests: {cpu: "40", memory: "140Gi"}
+    securityContext: {privileged: true}
+    volumeMounts:
+    - {name: cache, mountPath: /cache}
+    - {name: dshm, mountPath: /dev/shm}
+  volumes:
+  - name: cache
+    hostPath: {path: /mnt/stateful_partition/kube-ephemeral-ssd/clef-cache, type: DirectoryOrCreate}
+  - name: dshm
+    emptyDir: {medium: Memory, sizeLimit: 32Gi}

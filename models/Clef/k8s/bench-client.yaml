@@ -1,0 +1,17 @@
+# Isolated load generator on the CPU-only pool (same practice as the DSV4 benchmarks).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: clef-bench-client
+  labels: {app: clef-bench-client}
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: shd-gem-cpu-pool
+  terminationGracePeriodSeconds: 5
+  containers:
+  - name: client
+    image: python:3.12-slim
+    command: ["bash", "-c", "pip install -q aiohttp && mkdir -p /work && sleep infinity"]
+    resources:
+      requests: {cpu: "8", memory: "16Gi"}
+      limits: {cpu: "16", memory: "32Gi"}

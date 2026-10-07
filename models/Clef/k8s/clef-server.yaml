@@ -1,0 +1,123 @@
+# Clef SystemOne server: one replica per G4 (g4-standard-48, 1x RTX PRO 6000) node.
+# Code ships in a ConfigMap:
+#   kubectl create configmap clef-server-code --from-file=server/app.py --from-file=server/clef_engine.py \
+#     --from-file=server/fast_patches.py --from-file=server/fp8_linear.py --from-file=server/nvfp4_linear.py
+# Weights + python deps live in the node-local cache (hostPath on the local-SSD RAID) and
+# are populated by the init container on first start.
+# QUANT: fp8_fast (default, accuracy-neutral) | nvfp4_mlp (+~28% throughput, -0.6 pt BANKING77 accuracy) | none
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clef-server
+  labels: {app: clef-server}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: clef-server}
+  strategy:
+    # One GPU per node: no room to surge, so replace one pod at a time and keep the other serving.
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 0, maxUnavailable: 1}
+  template:
+    metadata:
+      labels: {app: clef-server}
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: clef-g4-pool
+      tolerations:
+      - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector: {matchLabels: {app: clef-server}}
+            topologyKey: kubernetes.io/hostname
+      terminationGracePeriodSeconds: 20
+      initContainers:
+      - name: fetch
+        image: pytorch/pytorch:2.11.0-cuda13.0-cudnn9-devel
+        command: ["bash", "-c"]
+        args:
+        - |
+          set -e
+          export PYTHONUSERBASE=/cache/pyuser PATH=/cache/pyuser/bin:$PATH HF_HOME=/cache/hf
+          PKGS='transformers==5.10.2 flash-linear-attention==0.5.2 torchao==0.18.0 accelerate==1.15.0 fastapi uvicorn[standard] orjson pillow aiohttp numpy huggingface_hub[hf_xet]'
+          python -c "import fla, fastapi, uvicorn, orjson, accelerate, transformers; assert transformers.__version__ == '5.10.2'" 2>/dev/null \
+            || python -m pip install --user -q $PKGS || python -m pip install --user --break-system-packages -q $PKGS
+          if [ ! -f /cache/models/clef/.download_complete ]; then
+            python -c "from huggingface_hub import snapshot_download; snapshot_download('Cloudflare/clef', local_dir='/cache/models/clef', max_workers=16)"
+            touch /cache/models/clef/.download_complete
+          fi
+          mkdir -p /cache/triton
+        env:
+        - name: HF_TOKEN
+          valueFrom: {secretKeyRef: {name: hf-secret, key: HF_TOKEN, optional: true}}
+        volumeMounts:
+        - {name: cache, mountPath: /cache}
+      containers:
+      - name: server
+        image: pytorch/pytorch:2.11.0-cuda13.0-cudnn9-devel
+        command: ["bash", "-c", "cd /code && exec python app.py"]
+        ports:
+        - {containerPort: 8000, name: http}
+        env:
+        - {name: PYTHONUSERBASE, value: /cache/pyuser}
+        - {name: HF_HOME, value: /cache/hf}
+        - {name: MODEL_PATH, value: /cache/models/clef}
+        - {name: TRITON_CACHE_DIR, value: /cache/triton}
+        - {name: TOKENIZERS_PARALLELISM, value: "false"}
+        - {name: PYTORCH_CUDA_ALLOC_CONF, value: "expandable_segments:True"}
+        - {name: OMP_NUM_THREADS, value: "16"}
+        - {name: PORT, value: "8000"}
+        # tuned configuration (see report)
+        - {name: FUSED, value: "1"}
+        - {name: QUANT, value: "fp8_fast"}
+        - {name: PIN_AUTOTUNE, value: "1"}
+        - {name: PAD_MULTIPLE, value: "16"}  # exact; no Triton JIT compiles on live traffic (report section 7.1)
+        - {name: HEAD_IMPL, value: "fast"}
+        - {name: MASK_MODE, value: "none"}
+        - {name: ATTN_IMPL, value: "sdpa"}
+        - {name: MAX_LENGTH, value: "16384"}
+        - {name: MAX_BATCH_TOKENS, value: "4096"}  # ladder v2: best tok/s and p99 vs 8K/16K/32K
+        - {name: MAX_BATCH_SIZE, value: "64"}
+        - {name: MAX_WAIT_MS, value: "0"}
+        - {name: MIN_PAD_EFF, value: "0.8"}
+        resources:
+          limits: {nvidia.com/gpu: 1}
+          requests: {cpu: "16", memory: "64Gi"}
+        # /health is 503 until model load + warmup finish (measured: ~25 s after pod start on a warm node,
+        # ~50 s with a cold Triton cache; first start on a fresh node adds the weight download + pip install).
+        startupProbe:
+          httpGet: {path: /health, port: 8000}
+          periodSeconds: 5
+          failureThreshold: 120
+        readinessProbe:
+          httpGet: {path: /health, port: 8000}
+          periodSeconds: 5
+          failureThreshold: 2
+        livenessProbe:
+          httpGet: {path: /health, port: 8000}
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 4
+        volumeMounts:
+        - {name: cache, mountPath: /cache}
+        - {name: code, mountPath: /code}
+        - {name: dshm, mountPath: /dev/shm}
+      volumes:
+      - name: cache
+        hostPath: {path: /mnt/stateful_partition/kube-ephemeral-ssd/clef-cache, type: DirectoryOrCreate}
+      - name: code
+        configMap: {name: clef-server-code}
+      - name: dshm
+        emptyDir: {medium: Memory, sizeLimit: 32Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clef-server
+  labels: {app: clef-server}
+spec:
+  selector: {app: clef-server}
+  ports:
+  - {name: http, port: 8000, targetPort: 8000}
+  type: ClusterIP

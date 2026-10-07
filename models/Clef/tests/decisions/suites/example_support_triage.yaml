@@ -1,0 +1,86 @@
+# Example decision suite: support-ticket triage. It shows the suite format and runs against the live
+# endpoint; copy it as the starting point for a real workflow. Format reference: ../run_decisions.py.
+name: support-triage-example
+model: clef
+
+# The schema exactly as production sends it. Clef answers all questions jointly in one forward pass,
+# so a suite should use the real schema (same questions, wording and order), not a subset of it.
+questions:
+  department:
+    type: choice
+    instructions: Which team should handle the message?
+    criteria:
+      billing: Payments, invoices, refunds or charges
+      technical: Bugs, errors, performance problems or outages
+      account: Login, password, email or profile changes
+      sales: Pricing, plans, discounts or buying more seats
+  urgency:
+    type: score
+    instructions: How soon does the customer need a response?
+    criteria: [Can wait, This week, Today]
+  outage:
+    type: noul
+    instructions: Is a service down or unusable for the customer right now?
+
+cases:
+  # Shorthand: choice -> the expected option; score -> the expected level (+/-0.5); noul -> true/false.
+  - id: checkout-down
+    tags: [technical, outage]
+    state: Our checkout has returned 500 errors for the last 20 minutes and no orders are going through.
+    expect:
+      department: technical
+      urgency: 2
+      outage: true
+
+  # Any JSON value works as the state; dict-form expectations add confidence bounds.
+  - id: eu-api-timeouts
+    tags: [technical, outage]
+    state:
+      channel: chat
+      customer: {plan: Enterprise, region: eu-west}
+      message: Every API request from our EU region has timed out since 09:10 UTC. Our app is down for all EU users.
+    expect:
+      department: {choice: technical, min_confidence: 0.8}
+      urgency: {level: 2}
+      outage: {noul: true, min_confidence: 0.9}
+
+  - id: duplicate-charge
+    tags: [billing]
+    state: I was charged twice for invoice INV-2291 this month. Please refund the duplicate payment.
+    expect:
+      department: {choice: billing, min_confidence: 0.8}
+      outage: false
+
+  # A list accepts any of several answers: either team could reasonably own a missing reset email.
+  - id: reset-email-missing
+    tags: [account]
+    state: I forgot my password and the reset email never arrives, so I can't log in.
+    expect:
+      department: [account, technical]
+
+  - id: change-profile-email
+    tags: [account]
+    state: Please change the email address on my profile from old@example.com to new@example.com.
+    expect:
+      department: account
+      urgency: {max: 1.0}
+      outage: false
+
+  - id: annual-discount
+    tags: [sales]
+    state: We're a 40-person team evaluating your product. Do you offer a discount for annual billing on the Business plan?
+    expect:
+      department: sales
+      urgency: {max: 1.0}
+      outage: false
+
+  # Check only what the case is clear about: no single team owns a feature request, but some are wrong.
+  - id: dark-mode-request
+    tags: [low-priority]
+    state: It would be nice if the dashboard supported dark mode at some point. No rush!
+    expect:
+      department: {not_choice: [billing, account]}
+      urgency: 0
+      outage: false
+
+  # A known miss can stay in the suite without failing the run by adding:  xfail: <reason or ticket>

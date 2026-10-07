@@ -1,0 +1,82 @@
+# Long-lived dev pods (one per G4 node) used for stack checks, parity tests and
+# in-pod benchmarks. Weights + pip packages live on a node-local hostPath on the
+# local-SSD RAID so they survive pod restarts.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: clef-dev-a
+  labels: {app: clef-dev}
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: clef-g4-pool
+    kubernetes.io/hostname: gke-shd-gem-cluster-clef-g4-pool-1e28c4e2-9kqb
+  tolerations:
+  - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  terminationGracePeriodSeconds: 5
+  containers:
+  - name: dev
+    image: pytorch/pytorch:2.11.0-cuda13.0-cudnn9-devel
+    command: ["bash", "-c", "sleep infinity"]
+    env:
+    - {name: HF_HOME, value: /cache/hf}
+    - {name: HF_HUB_ENABLE_HF_TRANSFER, value: "0"}
+    - {name: PYTORCH_CUDA_ALLOC_CONF, value: "expandable_segments:True"}
+    - {name: OMP_NUM_THREADS, value: "16"}
+    - {name: TOKENIZERS_PARALLELISM, value: "false"}
+    - {name: PYTHONPATH, value: /cache/pylib}
+    - {name: PIP_TARGET_DIR, value: /cache/pylib}
+    - name: HF_TOKEN
+      valueFrom: {secretKeyRef: {name: hf-secret, key: HF_TOKEN, optional: true}}
+    resources:
+      limits: {nvidia.com/gpu: 1}
+      requests: {cpu: "40", memory: "140Gi"}
+    securityContext: {privileged: true}
+    volumeMounts:
+    - {name: cache, mountPath: /cache}
+    - {name: dshm, mountPath: /dev/shm}
+  volumes:
+  - name: cache
+    hostPath: {path: /mnt/stateful_partition/kube-ephemeral-ssd/clef-cache, type: DirectoryOrCreate}
+  - name: dshm
+    emptyDir: {medium: Memory, sizeLimit: 32Gi}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: clef-dev-b
+  labels: {app: clef-dev}
+spec:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: clef-g4-pool
+    kubernetes.io/hostname: gke-shd-gem-cluster-clef-g4-pool-1e28c4e2-vzbt
+  tolerations:
+  - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  terminationGracePeriodSeconds: 5
+  containers:
+  - name: dev
+    image: pytorch/pytorch:2.11.0-cuda13.0-cudnn9-devel
+    command: ["bash", "-c", "sleep infinity"]
+    env:
+    - {name: HF_HOME, value: /cache/hf}
+    - {name: PYTORCH_CUDA_ALLOC_CONF, value: "expandable_segments:True"}
+    - {name: OMP_NUM_THREADS, value: "16"}
+    - {name: TOKENIZERS_PARALLELISM, value: "false"}
+    - {name: PYTHONPATH, value: /cache/pylib}
+    - name: HF_TOKEN
+      valueFrom: {secretKeyRef: {name: hf-secret, key: HF_TOKEN, optional: true}}
+    resources:
+      limits: {nvidia.com/gpu: 1}
+      requests: {cpu: "40", memory: "140Gi"}
+    securityContext: {privileged: true}
+    volumeMounts:
+    - {name: cache, mountPath: /cache}
+    - {name: dshm, mountPath: /dev/shm}
+  volumes:
+  - name: cache
+    hostPath: {path: /mnt/stateful_partition/kube-ephemeral-ssd/clef-cache, type: DirectoryOrCreate}
+  - name: dshm
+    emptyDir: {medium: Memory, sizeLimit: 32Gi}

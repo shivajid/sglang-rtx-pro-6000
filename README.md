@@ -45,6 +45,8 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 **[openai/whisper-large-v3](./models/whisper-v3-large/results/benchmark_results.md)** - Since this is ASR model, we did not apply the standard ISL/OSL of 1K/8K and concurrancy of 512.
 
+**[Cloudflare/clef](./models/Clef/README.md)** - Since this is a decision model (one forward pass, no output tokens), we did not apply the standard ISL/OSL of 1K/8K and concurrency of 512. With FP8 and a custom prefill engine, one G4 (1x RTX PRO 6000) serves 10.6K input tok/s (147 ms for a 1.5K-token request), and 2 replicas reach 21.1K tok/s.
+
 *Table last updated: September 4, 2026*
 
 *# DeepSeek-V4-Flash-0731 (1-Node) was benchmarked on a single 8× RTX PRO 6000 node using 500GB Hyperdisk Balanced persistent storage (`1k/8k` reasoning sweep, 64 → 512 concurrency). Output throughput reached 3,880.89 tok/s with 6,122.00 peak at C=512. See [DeepSeekV4-Flash-0731/README.md](./models/DeepSeekV4-Flash-0731/README.md).*
@@ -344,6 +346,7 @@ The `gkecluster` directory contains a comprehensive template for provisioning a 
 
 Detailed performance logs, including TTFT/TPOT latency distributions and throughput metrics, are located within each model's `results` directory:
 
+- [Cloudflare/clef: models/Clef/README.md](./models/Clef/README.md)
 - [zai-org/GLM-5.3-Flash: models/GLM5.3-Flash/results/benchmark_sweep_results.md](./models/GLM5.3-Flash/results/benchmark_sweep_results.md)
 - [deepseek-ai/DeepSeek-V4-Flash-0731: models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md](./models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md)
 - [moonshotai/Kimi-K3 on G4: models/kimik3/g4/BENCHMARK_REPORT.md](./models/kimik3/g4/BENCHMARK_REPORT.md)

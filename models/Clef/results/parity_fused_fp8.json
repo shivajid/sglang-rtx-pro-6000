@@ -1,0 +1,59 @@
+{
+ "records": 28,
+ "token_identity_mismatches": 0,
+ "quant": "fp8_rowwise",
+ "fused": true,
+ "engine_ref_vs_literal_ref": {
+  "questions": 9,
+  "argmax_agree": "9/9",
+  "max_dprob": 0.0,
+  "mean_dprob": 0.0,
+  "p99_dprob": 0.0,
+  "max_dlogit": 0.0
+ },
+ "B1-fused": {
+  "questions": 99,
+  "argmax_agree": "99/99",
+  "max_dprob": 0.02595986948504811,
+  "mean_dprob": 0.005535297305285837,
+  "p99_dprob": 0.02542064538514438,
+  "max_dlogit": 0.11328125,
+  "wall_s": 41.79
+ },
+ "BN-fused": {
+  "questions": 99,
+  "argmax_agree": "99/99",
+  "max_dprob": 0.05971931749545026,
+  "mean_dprob": 0.0062263093375183555,
+  "p99_dprob": 0.04788683670693558,
+  "max_dlogit": 0.2421875,
+  "wall_s": 30.52
+ },
+ "BN-fused-mask": {
+  "questions": 99,
+  "argmax_agree": "99/99",
+  "max_dprob": 0.0363736778028928,
+  "mean_dprob": 0.005675634469575835,
+  "p99_dprob": 0.030237599941118555,
+  "max_dlogit": 0.140625,
+  "wall_s": 13.62
+ },
+ "B1-fp8_rowwise": {
+  "questions": 99,
+  "argmax_agree": "95/99",
+  "max_dprob": 0.12133163845278222,
+  "mean_dprob": 0.020666374713927196,
+  "p99_dprob": 0.11555605396898612,
+  "max_dlogit": 0.40625,
+  "wall_s": 8.78
+ },
+ "BN-fp8_rowwise": {
+  "questions": 99,
+  "argmax_agree": "97/99",
+  "max_dprob": 0.06090725079145387,
+  "mean_dprob": 0.017269869015756906,
+  "p99_dprob": 0.05997616799694268,
+  "max_dlogit": 0.4375,
+  "wall_s": 13.09
+ }
+}
