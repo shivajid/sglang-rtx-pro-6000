@@ -12,7 +12,7 @@ Serve [reflection/Beam-1.0-501B-A23B-NVFP4](https://huggingface.co/reflection/Be
 |---|---|
 | [`nvfp4-g4-gke-dflash-beam-agentx-hicache.yaml`](./nvfp4-g4-gke-dflash-beam-agentx-hicache.yaml) | Deployment, Service and SM120 patch ConfigMap |
 | [`results/isl-osl-sweep/`](./results/isl-osl-sweep/) | ISL/OSL sweep: raw `results.jsonl`, per-run logs, `server_info.json` |
-| [`agentx_benchmark_hicache_report.md`](./agentx_benchmark_hicache_report.md) | Earlier AgentX long-context run, HiCache vs. baseline (older config, see the note there) |
+| [`agentx_benchmark_hicache_report.md`](./agentx_benchmark_hicache_report.md) | Earlier AgentX long-context run, HiCache vs. baseline. It used an older config: earlier image, `--hicache-ratio 3.0`, `write_through` |
 
 The same configuration is also packaged as a Helm recipe for [AI Hypercomputer gpu-recipes](https://github.com/AI-Hypercomputer/gpu-recipes) under `inference/g4/beam_501b/single-host-serving/sglang/`.
 
