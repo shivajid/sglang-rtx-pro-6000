@@ -23,6 +23,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 | Model | Benchmarked | Quantization | Setup | Output Throughput (tok/s) | Total Throughput (tok/s) | Peak Throughput (tok/s) | TPOT (ms) |
 |-------|-------------|--------------|-------|---------------------------|--------------------------|-------------------------|-----------|
+| [reflection/Beam-1.0-501B-A23B-NVFP4](./models/Reflection-Beam/README.md)◆ | 2026-10-16 | NVFP4 (DFlash spec. decoding) | 1 Node (8x RTX 6000) | 6952.86 | 7821.96 | 8915.00 | 15.43 |
 | [deepseek-ai/DeepSeek-V4-Flash-0731 (1-Node)](./models/DeepSeekV4-Flash-0731/README.md)# | 2026-09-04 | MXFP4 | 1 Node (8x RTX 6000) | 3880.89 | — | 6122.00 | 88.71 |
 | [zai-org/GLM-5.3-Flash](./models/GLM5.3-Flash/README.md)§ | 2026-08-29 | FP8 (tuned SM120 MoE) | 1 Node (8x RTX 6000) | 2579.80 | 9481.70 | 9481.70 | 70.60 |
 | [nvidia/GLM-5.2-NVFP4](./models/GLM5.2/nvfp4/resuts/benchmark_results.md)‡ | 2026-08-17 | NVFP4 | 1 Node (8x RTX 6000) | 1100.92 | 1238.53 | 1280.00 | 115.00 |
@@ -47,7 +48,9 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 **[Cloudflare/clef](./models/Clef/README.md)** - Since this is a decision model (one forward pass, no output tokens; API-compatible with Typesafe AI's Jev), we did not apply the standard ISL/OSL of 1K/8K and concurrency of 512. With FP8 and a custom prefill engine, one G4 (1x RTX PRO 6000) serves 10.6K input tok/s (147 ms for a 1.5K-token request), and 2 replicas reach 21.1K tok/s.
 
-*Table last updated: September 4, 2026*
+*Table last updated: October 16, 2026*
+
+*◆ Reflection Beam-1.0 NVFP4 runs on a single node with DFlash speculative decoding and HiCache. Its row is the `1k/8k` point at **128** concurrency (640 prompts), not the standard 512, taken from a 9-run sweep (`1k/1k`, `1k/8k`, `8k/1k` at C=32/64/128). The sweep used greedy decoding with `ignore_eos`, which gives a DFlash accept length of 7.2–7.9 out of 8, so read it as an upper bound. Real traffic with the model's default sampling (temperature 0.7, top_p 0.99) will accept fewer draft tokens. See the [Beam README](./models/Reflection-Beam/README.md).*
 
 *# DeepSeek-V4-Flash-0731 (1-Node) was benchmarked on a single 8× RTX PRO 6000 node using 500GB Hyperdisk Balanced persistent storage (`1k/8k` reasoning sweep, 64 → 512 concurrency). Output throughput reached 3,880.89 tok/s with 6,122.00 peak at C=512. See [DeepSeekV4-Flash-0731/README.md](./models/DeepSeekV4-Flash-0731/README.md).*
 
@@ -66,6 +69,31 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 *† Kimi-K3 on G4 saturates at **128** concurrency, not 512 — the 32-GPU cluster hits its compute ceiling well before the standard profile's concurrency, so its row is the `1k/8k` peak at C=112. The Peak column is the observed burst peak (816 tok/s). Compare it to the [GB200 row](#performance-benchmarks-latest) for the same model on different silicon, not to the 512-concurrency rows. See the [G4 report](./models/kimik3/g4/BENCHMARK_REPORT.md).*
 
 *\*\*\*\* gemma-4-26B-A4B is served with **vLLM** (not SGLang) on a single GPU, and is benchmarked with `sglang.bench_serving` as the client. Its main-table row is the `1k/8k` @ 512 concurrency point of the sweep; the Peak column is the best observed output throughput across all patterns (`1k/1k` @ 1024). Full sweep: [master_benchmark_summary.md](./models/Gemma4-26B/results/master_benchmark_summary.md).*
+
+## [reflection/Beam-1.0-501B-A23B-NVFP4](./models/Reflection-Beam/README.md) Performance Sweep
+[Detailed Configuration & Results](./models/Reflection-Beam/)
+
+Reflection's Beam-1.0 (501B MoE, 23B active, hybrid sliding-window attention), served in NVFP4 on a **single G4 node** (8x RTX PRO 6000, TP8/EP8) with **DFlash** speculative decoding (block size 8) and **HiCache** (host-memory KV cache). It runs on the public `lmsysorg/sglang:beam` image plus a one-line SM120 patch that enables the `flashinfer_cutlass` NVFP4 MoE runner. The weights (about 278 GiB) download at pod start onto a 500 GiB ephemeral Hyperdisk Balanced volume.
+
+### Benchmark Settings
+- **Setup:** 1 Node (8x RTX PRO 6000), TP8 · EP8, `--moe-runner-backend flashinfer_cutlass`, 262K context, `--max-running-requests 192`.
+- **Image:** `lmsysorg/sglang:beam` (pinned by digest). Draft model: `reflection/Beam-1.0-501B-A23B-DFlash2`.
+- **HiCache:** `--hicache-ratio 2.0 --hicache-write-policy write_back --hicache-mem-layout page_first --hicache-io-backend kernel`.
+- **Workload Patterns:** `1k/1k`, `1k/8k` and `8k/1k` at concurrency 32 → 128 (5 × C prompts each), greedy decoding with `ignore_eos`.
+
+| Workload Pattern | Peak Output Tok/s | Peak Total Tok/s | @ Concurrency | Median TPOT | Median TTFT |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **1k / 8k (Reasoning)** | **6,952.9** | 7,822.0 | 128 | 15.4 ms | 726 ms |
+| **1k / 1k (Balanced)** | 4,825.3 | 9,650.5 | 128 | 21.9 ms | 837 ms |
+| **8k / 1k (Prefill)** | 1,507.5 | **13,567.5** | 128 | 79.6 ms | 2,020 ms |
+
+**Reading the numbers:**
+- **Decode-heavy traffic gains the most from DFlash.** At `1k/8k`, median TPOT is 7.05 ms at 32 streams and 15.4 ms at 128.
+- **`8k/1k` is prefill-bound.** Total throughput levels off at about 13.6K tok/s, and TPOT grows with concurrency.
+- **These are upper bounds for DFlash.** The sweep used greedy decoding, which gave an accept length of 7.2–7.9 out of 8.
+- **NVFP4 accuracy is close to BF16.** Reflection's published scores are within 1.7 points of BF16 on its headline benchmarks (for example, SWE-bench Verified 80.7% vs 81.6%).
+
+The [model README](./models/Reflection-Beam/README.md) has the full config, the sweep chart and the eval table.
 
 ## [zai-org/GLM-5.3-Flash](./models/GLM5.3-Flash/README.md) Performance Sweep
 [Detailed Configuration & Results](./models/GLM5.3-Flash/)
@@ -309,13 +337,15 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
   - `KimiK2.5/`: Configurations for Kimi-K2.5.
   - `KimiK2.6/`: Agentic benchmark results and HiCache configurations.
   - `Qwen3.5-397B-A17B-FP8/`: Latency benchmarks for ultra-large MoE model.
+  - [`Reflection-Beam/`](./models/Reflection-Beam/README.md): Beam-1.0 NVFP4 single-node recipe (DFlash speculative decoding + HiCache, public `lmsysorg/sglang:beam` image with an SM120 patch), an ISL/OSL sweep at C=32–128, and an AgentX long-context HiCache report.
 - `gkecluster/`: Infrastructure-as-Code for GKE provisioning.
 - `benchmarking_scripts/`: Global benchmark definitions and performance scripts.
   - `agentic_benchmark/`: Scripts for simulating agentic workloads.
 - [`sglang_gemini_cli/`](./sglang_gemini_cli/README.md): Point Gemini CLI at an SGLang endpoint to get an agentic coding harness on self-hosted models.
 - `gcp_g4_specs.md`: Detailed hardware and infrastructure specifications.
 
-## Key Updates (July–September 2026)
+## Key Updates (July–October 2026)
+- **[Reflection Beam-1.0 NVFP4 on one node](./models/Reflection-Beam/README.md)**: Served the 501B (A23B) Beam-1.0 NVFP4 checkpoint on a single G4 node with DFlash speculative decoding and HiCache, using the public `lmsysorg/sglang:beam` image plus an SM120 MoE-runner patch. The sweep reached **6,953 output tok/s** (`1k/8k` @ C=128) and **13.6K total tok/s** (`8k/1k` @ C=128), with an 8.8 ms median TPOT at `1k/1k` @ C=32. These are greedy-decoding results, so they are an upper bound for DFlash. The same config is also packaged as a Helm recipe for AI Hypercomputer gpu-recipes.
 - **[DeepSeek-V4-Flash Single-Node & Hyperdisk Setup](./models/DeepSeekV4-Flash-0731/README.md)**: Built single-node (8× RTX PRO 6000) serving with dedicated 500 GB Hyperdisk Balanced volume (`dsv4-flash-hyperdisk-balanced`), completely eliminating boot disk pressure and eviction. Completed 1K/8K reasoning sweep from C=64 to 512, reaching **3,880.89 output tok/s** (peak 6,122.00 tok/s).
 - **[GLM-5.3 2-Node Validation & MoE Tuning](./models/GLM5.3/README.md)**: Deployed 2-node FP8 recipe with tuned SM120 MoE config (`E=256,N=256,K=6144,fp8_w8a8`) and Hyperdisk ML provisioning. Correctness-verified with GSM8K (0.900/0.925 accuracy). Identified that `flashinfer_sparse_mla` suffers silent corruption and established `--dsa-prefill-backend trtllm --dsa-decode-backend trtllm` as the stable path.
 - **[GLM-5.3-Flash on one node](./models/GLM5.3-Flash/README.md)**: Got GLM-5.3-Flash serving on a single G4 node (8x RTX PRO 6000, TP8) — a model that would not run on SM120 out of the box. Required tilelang `num_stages=1` (99 KB smem cap) + DSA-backend patches and a custom-tuned SM120 fused-MoE kernel config (E=289/N=256). Peak **9,481.7 total tok/s** (`8k/1k` @ C=128) and **2,579.8 output tok/s** (`1k/8k` @ C=256); profiling shows TP8 AllReduce over PCIe is the dominant cost (~43%).
@@ -346,6 +376,7 @@ The `gkecluster` directory contains a comprehensive template for provisioning a 
 
 Detailed performance logs, including TTFT/TPOT latency distributions and throughput metrics, are located within each model's `results` directory:
 
+- [reflection/Beam-1.0-501B-A23B-NVFP4: models/Reflection-Beam/README.md](./models/Reflection-Beam/README.md) (sweep: [summary.md](./models/Reflection-Beam/results/isl-osl-sweep/summary.md))
 - [Cloudflare/clef: models/Clef/README.md](./models/Clef/README.md)
 - [zai-org/GLM-5.3-Flash: models/GLM5.3-Flash/results/benchmark_sweep_results.md](./models/GLM5.3-Flash/results/benchmark_sweep_results.md)
 - [deepseek-ai/DeepSeek-V4-Flash-0731: models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md](./models/DeepSeekV4-Flash-0731/results/benchamrk_sweep_report.md)
