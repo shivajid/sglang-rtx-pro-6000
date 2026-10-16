@@ -1,0 +1,60 @@
+/sgl-workspace/sglang/python/sglang/srt/layers/quantization/awq/awq.py:53: UserWarning: Only CUDA, HIP and XPU support AWQ currently.
+  warnings.warn(f"Only CUDA, HIP and XPU support AWQ currently.")
+/sgl-workspace/sglang/python/sglang/srt/layers/quantization/gguf.py:69: UserWarning: Only CUDA, MUSA and NPU support GGUF quantization currently.
+  warnings.warn(f"Only CUDA, MUSA and NPU support GGUF quantization currently.")
+/sgl-workspace/sglang/python/sglang/bench_serving.py:13: FutureWarning: `sglang.bench_serving` is deprecated and will be removed in a future release; use `sglang.benchmark.serving` instead (e.g. `python -m sglang.benchmark.serving`).
+  warnings.warn(
+benchmark_args=Namespace(backend='sglang', base_url=None, host='reflection-beam-nvfp4-g4-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='reflection/Beam-1.0-501B-A23B-NVFP4', served_model_name='beam', tokenizer=None, num_prompts=640, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=8192, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=128, output_file='/results/results.jsonl', output_details=False, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261016, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=True, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=True, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1024_osl8192_c128', header=None, rust_client=False, rust_worker_threads=None)
+Waiting up to 60s for http://reflection-beam-nvfp4-g4-hicache.default.svc.cluster.local:30080/v1/models to become ready...
+Server ready in 0.0s.
+Namespace(backend='sglang', base_url=None, host='reflection-beam-nvfp4-g4-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='reflection/Beam-1.0-501B-A23B-NVFP4', served_model_name='beam', tokenizer=None, num_prompts=640, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=8192, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=128, output_file='/results/results.jsonl', output_details=False, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261016, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=True, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=True, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1024_osl8192_c128', header=None, rust_client=False, rust_worker_threads=None)
+
+#Input tokens: 655360
+#Output tokens: 5242880
+Starting warmup with 1 sequences...
+Warmup completed with 1 sequences. Starting main benchmark run...
+
+============ Serving Benchmark Result ============
+Backend:                                 sglang    
+Traffic request rate:                    inf       
+Max request concurrency:                 128       
+Successful requests:                     640       
+Benchmark duration (s):                  754.06    
+Total input tokens:                      655360    
+Total input text tokens:                 655360    
+Total generated tokens:                  5242880   
+Total generated tokens (retokenized):    5224719   
+Request throughput (req/s):              0.85      
+Input token throughput (tok/s):          869.11    
+Output token throughput (tok/s):         6952.86   
+Peak output token throughput (tok/s):    8915.00   
+Peak concurrent requests:                150       
+Total token throughput (tok/s):          7821.96   
+Concurrency:                             111.73    
+Accept length:                           7.57      
+----------------End-to-End Latency----------------
+Mean E2E Latency (ms):                   131642.53 
+Median E2E Latency (ms):                 128284.68 
+P90 E2E Latency (ms):                    145785.53 
+P95 E2E Latency (ms):                    161943.92 
+P99 E2E Latency (ms):                    225076.40 
+---------------Time to First Token----------------
+Mean TTFT (ms):                          1509.31   
+Median TTFT (ms):                        725.52    
+P90 TTFT (ms):                           4802.26   
+P95 TTFT (ms):                           7251.95   
+P99 TTFT (ms):                           9470.16   
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          15.89     
+Median TPOT (ms):                        15.43     
+P90 TPOT (ms):                           17.65     
+P95 TPOT (ms):                           19.43     
+P99 TPOT (ms):                           27.42     
+---------------Inter-Token Latency----------------
+Mean ITL (ms):                           15.89     
+Median ITL (ms):                         14.35     
+P90 ITL (ms):                            16.30     
+P95 ITL (ms):                            25.37     
+P99 ITL (ms):                            56.97     
+Max ITL (ms):                            640.28    
+==================================================

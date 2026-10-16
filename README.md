@@ -45,7 +45,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 **[openai/whisper-large-v3](./models/whisper-v3-large/results/benchmark_results.md)** - Since this is ASR model, we did not apply the standard ISL/OSL of 1K/8K and concurrancy of 512.
 
-**[Cloudflare/clef](./models/Clef/README.md)** - Since this is a decision model (one forward pass, no output tokens), we did not apply the standard ISL/OSL of 1K/8K and concurrency of 512. With FP8 and a custom prefill engine, one G4 (1x RTX PRO 6000) serves 10.6K input tok/s (147 ms for a 1.5K-token request), and 2 replicas reach 21.1K tok/s.
+**[Cloudflare/clef](./models/Clef/README.md)** - Since this is a decision model (one forward pass, no output tokens; API-compatible with Typesafe AI's Jev), we did not apply the standard ISL/OSL of 1K/8K and concurrency of 512. With FP8 and a custom prefill engine, one G4 (1x RTX PRO 6000) serves 10.6K input tok/s (147 ms for a 1.5K-token request), and 2 replicas reach 21.1K tok/s.
 
 *Table last updated: September 4, 2026*
 

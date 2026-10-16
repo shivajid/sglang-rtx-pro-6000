@@ -9,28 +9,42 @@ kind: ClusterRole
 metadata:
   name: k8s-monitor-cluster-role
 rules:
-- apiGroups: [""]
-  resources: ["pods", "pods/log"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: [""]
-  resources: ["nodes"]
-  verbs: ["get", "list"]
-- apiGroups: ["metrics.k8s.io"]
-  resources: ["pods"]
-  verbs: ["get", "list"]
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  - pods/log
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ''
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: k8s-monitor-cluster-rb
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k8s-monitor-cluster-role
 subjects:
 - kind: ServiceAccount
   name: k8s-monitor-sa
   namespace: default
-roleRef:
-  kind: ClusterRole
-  name: k8s-monitor-cluster-role
-  apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -38,23 +52,26 @@ metadata:
   name: k8s-monitor-exec-role
   namespace: default
 rules:
-- apiGroups: [""]
-  resources: ["pods/exec"]
-  verbs: ["create"]
+- apiGroups:
+  - ''
+  resources:
+  - pods/exec
+  verbs:
+  - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: k8s-monitor-exec-rb
   namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: k8s-monitor-exec-role
 subjects:
 - kind: ServiceAccount
   name: k8s-monitor-sa
   namespace: default
-roleRef:
-  kind: Role
-  name: k8s-monitor-exec-role
-  apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -71,23 +88,29 @@ spec:
       labels:
         app: k8s-monitor
     spec:
-      serviceAccountName: k8s-monitor-sa
-      nodeSelector:
-        cloud.google.com/gke-nodepool: large-cpu-pool
       containers:
-      - name: app
+      - command:
+        - sh
+        - -c
+        - python3 -c "import urllib.request; urllib.request.urlretrieve('https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl',
+          '/tmp/kubectl')" && chmod +x /tmp/kubectl && python -u /app/server.py
         image: python:3.9-slim
-        command: ["sh", "-c", "python3 -c \"import urllib.request; urllib.request.urlretrieve('https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl', '/tmp/kubectl')\" && chmod +x /tmp/kubectl && python -u /app/server.py"]
-        workingDir: /app
+        name: app
         ports:
         - containerPort: 8080
         volumeMounts:
-        - name: code
-          mountPath: /app
+        - mountPath: /app
+          name: code
+        workingDir: /app
+      serviceAccountName: k8s-monitor-sa
+      tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
       volumes:
-      - name: code
-        configMap:
+      - configMap:
           name: k8s-monitor-code
+        name: code
 ---
 apiVersion: v1
 kind: Service
@@ -95,10 +118,10 @@ metadata:
   name: k8s-monitor
   namespace: default
 spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 8080
   selector:
     app: k8s-monitor
-  ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 8080
   type: ClusterIP

@@ -1,0 +1,225 @@
+  # HiCache variant of nvfp4-g4-gke-dflash-beam-agentx.yaml (same image, model, drafter, SM120
+  # patch and AgentX tuning; separate names so it can be A/B'd against the agentx deployment).
+  # It adds SGLang HiCache: a pinned host-memory L2 tier behind the device radix cache, so
+  # multi-turn prefixes that fall out of the ~31 GB/GPU KV pool are reloaded over PCIe instead
+  # of being re-prefilled.
+  #
+  #   kubectl scale deploy/reflection-beam-nvfp4-g4-dflash-agentx --replicas=0   # same node pin
+  #   kubectl apply -f nvfp4-g4-gke-dflash-beam-agentx-hicache.yaml
+  #   kubectl logs -f -l app=reflection-beam-nvfp4-g4-dflash-agentx-hicache
+  #   kubectl port-forward svc/reflection-beam-nvfp4-dflash-agentx-hicache 30083:30080
+  #
+  # HiCache settings (flags as accepted by the sglang:beam-final build; see
+  # srt/arg_groups/hicache_hook.py and srt/mem_cache/hicache_auto_size.py in the image):
+  #
+  #  1. --enable-hierarchical-cache: device radix cache (L1) + pinned host pool (L2). A hit on a
+  #     100k-token prefix is one H2D copy of <= ~2.7 GB per GPU (all 52 layers, 26.6 KB/token/GPU;
+  #     ~0.1-0.2 s at PCIe Gen5 rates) instead of ~10 s of re-prefill at the ~10k tok/s this
+  #     node sustains.
+  #  2. --hicache-ratio 3.0: host pool = 3x the device KV pool, per rank. With
+  #     --mem-fraction-static 0.76 the device pool is ~31.4 GB/GPU, so ~94 GB pinned per rank,
+  #     ~750 GB for TP8, i.e. 3x the device token capacity (~4.5M prefix tokens in the
+  #     full-layer accounting of the 2026-10-14 log: ~45 sessions at 100k). The build's default
+  #     is 2.0 auto-shrunk to 80 % of host memory (--hicache-host-memory-fraction); an explicit
+  #     ratio or --hicache-size turns that auto-sizing OFF, so keep ratio x 31.4 GB x 8 well
+  #     below the node's ~1.38 TiB allocatable. 4.0 (~1 TB pinned) is the ceiling here.
+  #  3. --hicache-write-policy write_through: every new page is mirrored to host as soon as it is
+  #     written, so a prefix survives device eviction with no copy on the eviction path. In
+  #     AgentX nearly every token is reused by the next turn or a subagent, so
+  #     write_through_selective / write_back would only save D2H traffic that is negligible on
+  #     this node: 10k tok/s x 26.6 KB/token/GPU ~= 0.27 GB/s per GPU, vs the ~10 GB/s of TP8
+  #     all-reduce traffic already on each PCIe link.
+  #  4. --hicache-mem-layout page_first + --hicache-io-backend kernel: page-contiguous host
+  #     layout and the sgl-kernel gather/scatter transfer kernels (one launch per page batch,
+  #     all layers). "direct" (torch index copies) would be rewritten to page_first_direct.
+  #  5. --enable-cache-report: returns cached_tokens in usage so the AgentX run can report the
+  #     per-request prefix hit rate (L1 + L2) and the A/B is measurable.
+  #  6. Pod memory request 512Gi -> 1Ti: the pinned pool is charged to the pod. Expect a few
+  #     extra minutes of start-up while 8 x ~94 GB are page-locked (startupProbe allows 90 min).
+  #
+  # Not included: an L3 tier (--hicache-storage-backend file|mooncake|hf3fs|nixl; single node,
+  # no fast local NVMe verified) and --hicache-host-memory-mode buffer_only (requires L3).
+  # Unverified on this build: the HiCache draft-pool ("sidecar") path for DFLASH together with
+  # --enable-unified-memory; the arg hooks only rule out EAGLE/EAGLE3 + HiCache under unified
+  # memory. If start-up fails with "HiCache draft pools require UnifiedRadixCache" or a
+  # NotImplementedError from the spec worker, retry without --enable-unified-memory first.
+  #
+  # Target workload: SemiAnalysis AgentX (bench/shd-gem/agentx-bench-job.yaml): multi-turn
+  # agentic-coding sessions, 50k-200k-token prefixes reused across turns, 1k-20k new tokens per
+  # turn, streaming, ignore_eos, subagent fan-out. On this PCIe-only 8x RTX PRO 6000 node the
+  # 2026-10-14 random 8k/1k run showed prefill at ~10k tok/s aggregate (median TTFT 16 s) with
+  # decode starved behind prefill chunks (P99 ITL 884 ms, max 16.5 s), while decode alone is
+  # good (median ITL 7.3 ms, DFlash accept ~12.5/16). Changes vs the baseline, in priority order:
+  #
+  #  1. --swa-full-tokens-ratio 0.05 (default 0.8). Beam is hybrid-SWA: 43 layers with a
+  #     512-token window, 9 full-attention layers. The default gives the SWA pool 0.8x the full
+  #     pool's token count, i.e. 24.9 GB of the 31.4 GB KV budget (log: full 1,519,360 tokens =
+  #     6.5 GB, swa 1,215,488 tokens = 24.9 GB) even though SWA layers only ever need the last
+  #     512 tokens per running request plus the in-flight prefill chunks. The *full* layers are
+  #     what hold the 100k+ multi-turn prefixes AgentX reuses, so 1.5M full tokens (~15 sessions
+  #     at 100k) thrash the radix cache and force full re-prefill of long contexts. 0.05 moves
+  #     the budget to the full pool: ~4.5M full tokens (3x) and ~225k SWA tokens (64 requests x
+  #     (512 + 2 x 4096 in-flight chunk tokens) + prefix tails fit comfortably).
+  #  2. NCCL_P2P_LEVEL=SYS + custom all-reduce ON (the baseline turned both off to survive node
+  #     ...-02ac, whose cross-socket P2P returns corrupt data). Pinned to ...-n0k0 where all 56
+  #     GPU pairs verified clean at ~32 GB/s. The TP8 all-reduces (2 per layer, 42 MB per
+  #     4096-token chunk) are the dominant prefill cost on PCIe; direct P2P beats the host-memory
+  #     path, and the custom one-shot kernel cuts decode/verify latency for messages <= 8 MB.
+  #  3. --prefill-decode-interval 1: DFlash does not support mixed prefill/decode batches
+  #     (spec_registry supports_mixed_chunk=False), so a prefill chunk monopolises the step and
+  #     consecutive chunks starve decode. This forces one decode round after every prefill
+  #     batch: bounds ITL to ~one chunk time at the cost of ~2-3 % TTFT.
+  #  4. SGLANG_FLASHINFER_AUTOTUNE_EXTEND=1: also autotune the FlashInfer CUTLASS NVFP4 MoE for a
+  #     prefill-sized (max_prefill_tokens) problem during warmup; by default only decode shapes
+  #     are tuned, so prefill runs the first tactic that fits on SM120.
+  #  5. --cuda-graph-max-bs-decode 64 kept; note the custom all-reduce only covers messages up to
+  #     8 MB, so verify batches above ~50 requests (50 x 16 x 5120 x 2 B) fall back to NCCL.
+  #
+  # Not included (separate experiments, see bench/shd-gem/README.md): --enable-dp-attention
+  # --dp-size 8 --enable-dp-lm-head (DFlash supports it; halves TP traffic by removing the
+  # post-attention all-reduce, but replicates ~10 GB of bf16 attention weights per GPU and
+  # changes batching), --kv-cache-dtype fp8_e4m3 (2x KV capacity; trtllm_mha+SWA+DFlash support
+  # on SM120 unverified), and 2 x TP4 replicas per node behind a cache-aware router.
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: reflection-beam-sm120-patch-dflash-agentx-hicache
+    namespace: default
+  data:
+    # Lets BeamMoE run the NVFP4 experts on flashinfer_cutlass on SM120.
+    # In sglang:beam-final, TopK output_format and apply_routed_scaling_factor_on_output
+    # are already handled automatically for flashinfer_cutlass; only get_beam_supported_moe_runners
+    # needs to allow flashinfer_cutlass for nvfp4.
+    sm120-beam-moe.patch: |
+      --- a/sglang/srt/models/beam.py
+      +++ b/sglang/srt/models/beam.py
+      @@ -1303,3 +1303,3 @@
+              "fp8": ("auto", "triton"),
+      -        "nvfp4": ("flashinfer_trtllm",),
+      +        "nvfp4": ("flashinfer_trtllm", "flashinfer_cutlass"),
+          }.get(quant_scheme, ())
+---
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: reflection-beam-nvfp4-g4-dflash-agentx-hicache
+    namespace: default
+    labels: {app: reflection-beam-nvfp4-g4-dflash-agentx-hicache}
+  spec:
+    replicas: 1
+    strategy: {type: Recreate}   # a surge pod can never fit next to a running one
+    selector:
+      matchLabels: {app: reflection-beam-nvfp4-g4-dflash-agentx-hicache}
+    template:
+      metadata:
+        labels: {app: reflection-beam-nvfp4-g4-dflash-agentx-hicache}
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: In
+                  values:                # n0k0 only: ...-02ac has corrupt cross-socket GPU P2P
+                  - gke-shd-gem-cluster-shd-gem-g4-gpu-po-fce8ea74-0kgd
+        tolerations:
+        - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+        enableServiceLinks: false        # keep Service env vars out of the SGLANG_* namespace
+        terminationGracePeriodSeconds: 30
+        containers:
+        - name: sglang
+          image: us-central1-docker.pkg.dev/northam-ce-mlai-tpu/shivaji-beam-docker-repo/sglang:beam-final
+          imagePullPolicy: IfNotPresent
+          # args only, so the image entrypoint (/opt/nvidia/nvidia_entrypoint.sh) still runs.
+          # No --enable-unified-memory on SM120: the FMHA-v2 prefill stacks each layer's K/V view,
+          # which in the unified pool spans the whole KV buffer (OOM at 2x the pool size).
+          # DFlash + CUDA graph settings as in the baseline; see the header for the AgentX changes.
+          args:
+          - bash
+          - -c
+          - |
+            set -e
+            patch -d /sgl-workspace/sglang/python -p1 < /patches/sm120-beam-moe.patch
+            exec sglang serve \
+              --model-path /data/model/hub/models--reflection--Beam-1.0-501B-A23B-NVFP4-final/snapshots/81a5ab6b525d43f0a11ddd176412ee0f320ba9e0 \
+              --tp-size 8 \
+              --ep-size 8 \
+              --moe-runner-backend flashinfer_cutlass \
+              --speculative-algorithm DFLASH \
+              --speculative-draft-model-path /data/model/hub/models--reflection--dflash2-drafter-preview-final/snapshots/8d26c952ec6a82a9a18825d6126c9f6948149ad9 \
+              --speculative-num-draft-tokens 8 \
+              --context-length 262144 \
+              --max-running-requests 192 \
+              --cuda-graph-max-bs-decode 192 \
+              --mem-fraction-static 0.76 \
+              --enable-unified-memory \
+              --prefill-decode-interval 1 \
+              --enable-hierarchical-cache \
+              --hicache-ratio 2.0 \
+              --hicache-write-policy write_back \
+              --hicache-mem-layout page_first \
+              --hicache-io-backend kernel \
+              --enable-cache-report \
+              --reasoning-parser beam \
+              --tool-call-parser beam \
+              --host 0.0.0.0 \
+              --enable-metrics \
+              --port 30080
+          env:
+          - {name: HF_HUB_CACHE, value: /data/model/hub}
+          - {name: HF_HUB_OFFLINE, value: "1"}
+          # From the sglang-rtx-pro-6000 G4 recipes: pin each TP rank to its 24-core slice.
+          # Also keeps each rank's pinned HiCache pool on its own socket (first-touch NUMA).
+          - {name: SGLANG_SET_CPU_AFFINITY, value: "1"}
+          - {name: OMP_NUM_THREADS, value: "24"}
+          # Direct P2P across the sockets (GPUs 0-3 / 4-7) for the TP8 all-reduces; verified clean
+          # on n0k0 (bench/p2p-test-pod.yaml). Do NOT schedule this on ...-02ac.
+          - {name: NCCL_P2P_LEVEL, value: "SYS"}
+          - {name: NCCL_MIN_NCHANNELS, value: "8"}
+          - {name: NCCL_DEBUG, value: "WARN"}
+          # Autotune the FlashInfer MoE kernels for prefill-sized batches too (default: decode only).
+          - {name: SGLANG_FLASHINFER_AUTOTUNE_EXTEND, value: "1"}
+          ports:
+          - {name: http, containerPort: 30080}
+          resources:
+            # 1Ti: ~750 GB pinned HiCache host pool (8 x 3.0 x ~31.4 GB) + process RSS + 32Gi
+            # /dev/shm; the node (gxn5) has ~1.38 TiB allocatable. No memory limit on purpose:
+            # pinned pages are charged to the pod and a limit would OOM-kill at start-up.
+            requests: {cpu: "96", memory: 1Ti, nvidia.com/gpu: "8"}
+            limits: {nvidia.com/gpu: "8"}
+          # /ready answers instantly. /health runs a 1-token generation and always takes >= 1 s,
+          # which exceeds the default 1 s probe timeout (pods stay 0/1 even though serving works).
+          startupProbe:                  # JIT compile + weight load + CUDA graphs: up to 90 min
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 180
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+          - {name: weights, mountPath: /data/model, readOnly: true}
+          - {name: patch, mountPath: /patches, readOnly: true}
+          - {name: sglang-cache, mountPath: /root/.cache/sglang}
+          - {name: dshm, mountPath: /dev/shm}
+        volumes:
+        - name: weights
+          persistentVolumeClaim: {claimName: reflection-beam-hdml-pvc, readOnly: true}
+        - name: patch
+          configMap: {name: reflection-beam-sm120-patch-dflash-agentx-hicache}
+        - name: sglang-cache             # FlashInfer/Triton JIT + autotune results survive restarts
+          hostPath: {path: /var/lib/reflection-beam/sglang-cache, type: DirectoryOrCreate}
+        - name: dshm                     # pods otherwise get a 64 MiB /dev/shm
+          emptyDir: {medium: Memory, sizeLimit: 32Gi}
+---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: reflection-beam-nvfp4-dflash-agentx-hicache
+    namespace: default
+  spec:
+    selector: {app: reflection-beam-nvfp4-g4-dflash-agentx-hicache}
+    ports:
+    - {name: http, port: 30080, targetPort: http}

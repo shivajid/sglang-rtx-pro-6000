@@ -504,7 +504,7 @@
                         if (pod.ip) {
                             podLookup[pod.name] = pod;
                             
-                            if (pod.name.includes('sglang')) {
+                            if (pod.name.includes('sglang') || pod.name.includes('reflection-beam')) {
                                 const option = document.createElement('option');
                                 option.value = pod.name;
                                 option.innerText = `${pod.name} (${pod.ip})`;
@@ -562,7 +562,7 @@
             const podInfo = podLookup[podName];
             if (!podInfo) return;
             
-            const target = `${podInfo.ip}:30000`;
+            const target = `${podInfo.ip}:30080`;
             
             try {
                 const response = await fetch(`/api/metrics?target=${target}`);
