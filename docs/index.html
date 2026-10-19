@@ -4,25 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SOTA Benchmarks on Google Cloud — G4 (RTX PRO 6000), GB200 & GB300 Recipes</title>
-<meta name="description" content="Measured SGLang and vLLM recipes for serving trillion-parameter open models (Kimi-K2.6, Kimi-K3, DeepSeek-V3.2, DeepSeek-V4-Flash-0731, GLM-5.1/5.2/5.3-Flash, Qwen3.5, Reflection Beam-1.0) on Google Cloud G4 with NVIDIA RTX PRO 6000 GPUs — benchmarks, multi-node configs, KV-cache strategies, and the GKE Inference Gateway (llm-d).">
+<meta name="description" content="Measured SGLang and vLLM recipes for serving trillion-parameter open models (Kimi-K2.6, Kimi-K3, DeepSeek-V3.2, DeepSeek-V4-Flash-0731, GLM-5.1/5.2/5.3-Flash, Qwen3.5, Reflection Beam-1.0, Meta Muse-Spark-816B) on Google Cloud G4 with NVIDIA RTX PRO 6000 GPUs — benchmarks, multi-node configs, KV-cache strategies, and the GKE Inference Gateway (llm-d).">
 <link rel="canonical" href="https://shivajid.github.io/sglang-rtx-pro-6000/">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="SOTA Benchmarks on Google Cloud GPUs">
 <meta property="og:title" content="SOTA Benchmarks on Google Cloud — G4 (RTX PRO 6000), GB200 & GB300 Recipes">
-<meta property="og:description" content="Measured SGLang/vLLM recipes for trillion-parameter open models on RTX PRO 6000 GPUs without NVLink: 3,261 tok/s Kimi-K2.6, 81% prefix-cache hit rate on real agentic traces, prefix-cache-aware routing with the GKE Inference Gateway — plus new Kimi-K3 (GB200), GLM-5.2, GLM-5.3-Flash and Reflection Beam-1.0 results.">
+<meta property="og:description" content="Measured SGLang/vLLM recipes for trillion-parameter open models on RTX PRO 6000 GPUs without NVLink: 3,261 tok/s Kimi-K2.6, 81% prefix-cache hit rate on real agentic traces, prefix-cache-aware routing with the GKE Inference Gateway — plus Kimi-K3 (GB200 & G4), GLM-5.2, GLM-5.3-Flash, Reflection Beam-1.0, and Meta Muse-Spark-816B results.">
 <meta property="og:url" content="https://shivajid.github.io/sglang-rtx-pro-6000/">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="SOTA Benchmarks on Google Cloud — G4 (RTX PRO 6000), GB200 & GB300 Recipes">
-<meta name="twitter:description" content="Measured SGLang/vLLM serving recipes for Kimi-K2.6, Kimi-K3, DeepSeek-V3.2, GLM-5.1/5.2/5.3-Flash and more on GCP G4 (RTX PRO 6000), incl. the GKE Inference Gateway.">
+<meta name="twitter:description" content="Measured SGLang/vLLM serving recipes for Kimi-K2.6, Kimi-K3, DeepSeek-V3.2, GLM-5.1/5.2/5.3-Flash, Reflection Beam-1.0, Meta Muse-Spark-816B and more on GCP G4 (RTX PRO 6000), incl. the GKE Inference Gateway.">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "TechArticle",
   "headline": "SOTA Open-Model Serving Benchmarks on Google Cloud — G4 (RTX PRO 6000), GB200 and GB300",
-  "description": "Production-validated SGLang and vLLM serving recipes and benchmarks for trillion-parameter-class open models (Kimi-K2.5/K2.6/K3, DeepSeek-V3.2, DeepSeek-V4-Flash-0731, GLM-5.1/5.2/5.3-Flash, Qwen3.5-397B, Reflection Beam-1.0, Whisper, Chandra-OCR) on Google Cloud G4 instances with NVIDIA RTX PRO 6000 Blackwell GPUs — plus Kimi-K3 on GB200 and GLM-5.2 on GB300 — covering NVFP4/FP8/INT4 quantization, multi-node TP/PP parallelism over TCP, HiCache KV offload, agentic trace-replay and ViBench agentic coding benchmarks, and prefix-cache-aware routing with the GKE Inference Gateway (llm-d).",
+  "description": "Production-validated SGLang and vLLM serving recipes and benchmarks for trillion-parameter-class open models (Kimi-K2.5/K2.6/K3, DeepSeek-V3.2, DeepSeek-V4-Flash-0731, GLM-5.1/5.2/5.3-Flash, Qwen3.5-397B, Reflection Beam-1.0, Meta Muse-Spark-Open-816B-A42B, Whisper, Chandra-OCR) on Google Cloud G4 instances with NVIDIA RTX PRO 6000 Blackwell GPUs — plus Kimi-K3 on GB200 and GLM-5.2 on GB300 — covering NVFP4/FP8/INT4 quantization, multi-node TP/PP parallelism over TCP, HiCache KV offload, agentic trace-replay and ViBench agentic coding benchmarks, and prefix-cache-aware routing with the GKE Inference Gateway (llm-d).",
   "author": {"@type": "Person", "name": "Shivaji Dutta", "url": "https://github.com/shivajid"},
   "url": "https://shivajid.github.io/sglang-rtx-pro-6000/",
-  "dateModified": "2026-10-16",
+  "dateModified": "2026-10-19",
   "isAccessibleForFree": true,
   "about": ["LLM inference", "SGLang", "vLLM", "GKE Inference Gateway", "llm-d", "NVIDIA RTX PRO 6000", "Google Cloud G4", "NVFP4 quantization", "KV cache"],
   "isBasedOn": "https://github.com/shivajid/sglang-rtx-pro-6000"
