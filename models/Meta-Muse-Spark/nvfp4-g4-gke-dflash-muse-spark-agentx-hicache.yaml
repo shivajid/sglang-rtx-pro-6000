@@ -425,6 +425,36 @@ data:
                )
                prepared_input = None
                use_side_stream = not _is_cpu and torch.cuda.is_available()
+      --- a/sglang/srt/entrypoints/http_server.py
+      +++ b/sglang/srt/entrypoints/http_server.py
+      @@ -2529,19 +2529,24 @@
+
+           from granian import Granian
+           from granian.constants import HTTPModes, Interfaces, Loops
+      -    from granian.http import HTTP2Settings
+      +    from granian.http import HTTP1Settings, HTTP2Settings
+           from granian.server.embed import Server as GranianEmbeddedServer
+
+           Server = GranianEmbeddedServer if tokenizer_worker_num == 1 else Granian
+           target = (
+               app if tokenizer_worker_num == 1 else "sglang.srt.entrypoints.http_server:app"
+           )
+      +    keep_alive_s = envs.SGLANG_TIMEOUT_KEEP_ALIVE.get()
+           granian_kwargs = dict(
+               target=target,
+               address=host,
+               port=port,
+               interface=Interfaces.ASGI,
+               http=HTTPModes.auto,
+      +        http1_settings=HTTP1Settings(
+      +            header_read_timeout=keep_alive_s * 1000,
+      +        ),
+               http2_settings=HTTP2Settings(
+                   initial_connection_window_size=http2_initial_connection_window_size,
+                   max_concurrent_streams=http2_max_concurrent_streams,
+      +            keep_alive_timeout=keep_alive_s,
+               ),
+               log_level=log_level,
 ---
 apiVersion: apps/v1
 kind: Deployment
