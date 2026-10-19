@@ -716,12 +716,13 @@ python3 -m sglang.bench_serving \
       <tr><td><a href="#glm">GLM-5.1 / 5.2</a></td><td>Balanced mid-field option</td><td>NEXTN speculation; super-linear 1→2 node scaling (1,490 → 3,076 tok/s); low decode latency at sane concurrency</td><td>GLM-5.2 FP8 config is early and unoptimized (~60% of 5.1's throughput) — expect it to move</td></tr>
       <tr><td><a href="#glm53f">GLM-5.3-Flash</a></td><td>Flash-tier reasoner on one node</td><td>Best per-GPU output here without speculation (322.5 tok/s/GPU); 9.5K tok/s prefill peak; 84.3 Terminal-Bench 2.1 from 18B active params; R1-style CoT + DSA sparse attention; MIT license</td><td>Needs the patched image — stock SGLang won't serve on SM120 (smem cap, DSA layout); prefill runs eager, so TTFT cliffs hard past C=128; TP8 AllReduce over PCIe (~43% of GPU time) caps decode headroom</td></tr>
       <tr><td><a href="#beam">Reflection Beam-1.0</a></td><td>Single-node agentic coder with speculative decoding</td><td>Top SWE-bench Verified in the eval table; NVFP4 within 1.7 points of BF16; DFlash gives 7–15 ms TPOT on decode-heavy traffic; public image; 262K context with HiCache spillover</td><td>Needs a one-line SM120 MoE patch; DFlash gains depend on draft acceptance (the sweep is a greedy best case); 8k prompts are prefill-bound at about 13.6K tok/s; every new pod re-downloads about 278 GiB of weights</td></tr>
+      <tr><td><a href="#musespark">Meta Muse-Spark-816B</a></td><td>Largest single-node MoE here (816B / A42B)</td><td>816B total / 42B active MoE fitting on 1× G4 node in NVFP4; DFlash draft acceptance ~7.0–7.1 tokens/step delivers 1,987 tok/s output and 16.09 ms median TPOT at C=64; hybrid SWA + full attention with HiCache</td><td>Weight-heavy footprint (~61.2 GiB/GPU) leaves ~22.6 GiB KV cache per GPU before HiCache host spillover; evaluated at C=64</td></tr>
       <tr><td><a href="#qwen">Qwen3.5-397B</a></td><td>Latency-tuned mid-size MoE</td><td>Smaller active footprint (A17B); HiCache collapses the TTFT tail on prefix-sharing workloads</td><td>Benchmarked here on a latency profile, not the 1k/8k throughput profile — numbers aren't comparable to the table above</td></tr>
       <tr><td><a href="#gemma4">Gemma-4-26B</a></td><td>Small, dense-feeling MoE for one GPU</td><td>Only recipe here that needs a single GPU; smooth 28–64 ms ITL across every workload shape; cheapest unit of capacity by a wide margin</td><td>26B — not in the same capability class as the trillion-parameter models above; served on vLLM, so the SGLang tuning here doesn't transfer; hard prefill cliff past 512c</td></tr>
     </tbody>
   </table></div>
 
-  <div class="callout"><p><b>Rules of thumb.</b> Interactive scale → V4-Flash. Batch generation throughput → Kimi-K2.6 NVFP4. Agents with growing contexts → Kimi-K2.6 + HiCache (or K3 on GB200 when quality matters most). One node only → DeepSeek-V3.2 NVFP4, or <b>GLM-5.3-Flash</b> when R1-style reasoning and agentic-terminal quality matter more than raw aggregate, or <b>Reflection Beam-1.0</b> for coding agents that need long context and fast decode. <b>One GPU only → Gemma-4-26B.</b> Tight TTFT on RAG → HiCache, whichever model you pick. And for non-text: Whisper for audio, Chandra for OCR.</p></div>
+  <div class="callout"><p><b>Rules of thumb.</b> Interactive scale → V4-Flash. Batch generation throughput → Kimi-K2.6 NVFP4. Agents with growing contexts → Kimi-K2.6 + HiCache (or K3 on GB200 when quality matters most). One node only → DeepSeek-V3.2 NVFP4, <b>GLM-5.3-Flash</b> when R1-style reasoning and agentic-terminal quality matter more than raw aggregate, <b>Reflection Beam-1.0</b> for coding agents that need long context and fast decode, or <b>Meta Muse-Spark-816B</b> for an 816B-A42B MoE with DFlash speculative decoding on 8× GPUs. <b>One GPU only → Gemma-4-26B.</b> Tight TTFT on RAG → HiCache, whichever model you pick. And for non-text: Whisper for audio, Chandra for OCR.</p></div>
   <div class="pagenav"><a href="#benchmarking">← Benchmarking</a><a href="#kimi25">Kimi-K2.5 →</a></div>
 </section>
 
@@ -1609,7 +1610,91 @@ python -m sglang.bench_serving --backend sglang --host &lt;service&gt; --port 30
   --random-input-len 1024 --random-output-len 8192 \
   --num-prompts 640 --max-concurrency 128 --flush-cache</pre></div>
 
-  <div class="pagenav"><a href="#qwen">← Qwen3.5-397B</a><a href="#gemma4">Gemma-4-26B →</a></div>
+  <div class="pagenav"><a href="#qwen">← Qwen3.5-397B</a><a href="#musespark">Meta Muse-Spark →</a></div>
+</section>
+
+<!-- MUSESPARK -->
+<section class="page" id="page-musespark">
+  <h1 class="pagetitle">Meta Muse-Spark-Open-816B-A42B</h1>
+  <p class="lede">An 816B-total / 42B-active MoE served in <b>NVFP4</b> on a single G4 node (8× RTX PRO 6000 Blackwell Server Edition, 768 GB VRAM), paired with <b>DFlash</b> block-verification speculative decoding (<code class="inline">RadixArk/Muse-Spark-Open-DFlash2</code>) and <b>HiCache</b> host memory spillover.</p>
+  <div class="meta"><span class="chip">meta-models/Muse-Spark-Open-816B-A42B-NVFP4</span><span class="chip"><a href="https://github.com/shivajid/sglang-rtx-pro-6000/tree/main/models/Meta-Muse-Spark" target="_blank" rel="noopener" style="text-decoration:none">files on GitHub ↗</a></span><span class="chip">1× G4 · TP8 · EP1</span><span class="chip">NVFP4 + FP8 KV</span><span class="chip">DFlash (8 drafts)</span><span class="chip">HiCache 2.0×</span><span class="chip">aurius/sglang-muse-spark-rtxpro6000:10182026</span></div>
+
+  <h3 id="muse-config">Server configuration</h3>
+  <p>Full manifest: <a href="https://github.com/shivajid/sglang-rtx-pro-6000/blob/main/models/Meta-Muse-Spark/nvfp4-g4-gke-dflash-muse-spark-agentx-hicache.yaml" target="_blank" rel="noopener"><code class="inline">models/Meta-Muse-Spark/nvfp4-g4-gke-dflash-muse-spark-agentx-hicache.yaml</code></a>.</p>
+  <div class="codeblock"><div class="chead"><span>launch</span><button class="copybtn">Copy</button></div><pre>SGLANG_DISABLE_DEEP_GEMM=1 SGLANG_ENABLE_SPEC_V2=1 SGLANG_TIMEOUT_KEEP_ALIVE=1800 \
+sglang serve \
+  --model-path meta-models/Muse-Spark-Open-816B-A42B-NVFP4 \
+  --revision 4239e4db19376904f2e82c167e78f70abb5455fe \
+  --served-model-name muse-spark --trust-remote-code \
+  --tp-size 8 --ep-size 1 \
+  --quantization modelopt_fp4 --moe-runner-backend flashinfer_cutlass \
+  --fp4-gemm-backend flashinfer_cudnn --kv-cache-dtype fp8_e4m3 \
+  --attention-backend flashinfer --prefill-attention-backend flashinfer \
+  --decode-attention-backend flashinfer --swa-full-tokens-ratio <span class="f">0.4</span> \
+  --speculative-algorithm DFLASH \
+  --speculative-draft-model-path RadixArk/Muse-Spark-Open-DFlash2 \
+  --speculative-draft-model-revision 46c90f412549c472941a68382d91a99e5e6372a0 \
+  --speculative-num-draft-tokens <span class="f">8</span> --speculative-use-block-verification \
+  --mem-fraction-static <span class="f">0.88</span> --max-running-requests 64 --cuda-graph-max-bs 64 \
+  --chunked-prefill-size 16384 --max-prefill-tokens 32768 --enable-mixed-chunk \
+  --context-length 131072 --schedule-policy lpm --schedule-conservativeness 0.3 \
+  --enable-hierarchical-cache --hicache-ratio 2.0 \
+  --hicache-write-policy write_through_selective --hicache-mem-layout page_first_direct \
+  --reasoning-parser muse_spark --tool-call-parser muse_spark \
+  --enable-http2 --host 0.0.0.0 --port 30080</pre></div>
+
+  <h4>Per-GPU VRAM breakdown (96 GB total per GPU)</h4>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Component</th><th class="num">Size / GPU</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Target model weights (NVFP4, TP=8)</td><td class="num">~59.22 GiB</td><td>816B total / 42B active, 62 layers, 256 routed experts (top-8)</td></tr>
+      <tr><td>DFlash2 draft model weights (TP=8)</td><td class="num">~1.96 GiB</td><td><code class="inline">RadixArk/Muse-Spark-Open-DFlash2</code></td></tr>
+      <tr><td>KV cache pool (FP8 E4M3)</td><td class="num">~22.63 GiB</td><td>Full attention: 370,752 tokens · SWA: 263,424 tokens (<code class="inline">--swa-full-tokens-ratio 0.4</code>)</td></tr>
+      <tr><td>CUDA graphs (<code class="inline">max-bs 64</code>) + runtime buffers</td><td class="num">~11.2 GiB</td><td><code class="inline">--mem-fraction-static 0.88</code> (~85 GiB static budget)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 id="muse-results">Benchmark results — concurrency 64</h3>
+  <p>Measured with <code class="inline">sglang.bench_serving</code> from the isolated <code class="inline">cpu-bench-pool</code> node (<code class="inline">--dataset-name random --random-range-ratio 1.0 --num-prompts 192 --max-concurrency 64 --flush-cache</code>, greedy decoding with <code class="inline">ignore_eos</code>).</p>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Metric</th><th class="num">1k in / 1k out (C=64)</th><th class="num">1k in / 8k out (C=64)</th></tr></thead>
+    <tbody>
+      <tr><td>Completed requests / duration</td><td class="num">192 / 192 in 102.09 s</td><td class="num">192 / 192 in 791.45 s</td></tr>
+      <tr><td>Request throughput</td><td class="num"><span class="best">1.88 req/s</span></td><td class="num">0.24 req/s</td></tr>
+      <tr><td>Input token throughput</td><td class="num">1,925.82 tok/s</td><td class="num">248.41 tok/s</td></tr>
+      <tr><td>Output token throughput</td><td class="num">1,925.82 tok/s</td><td class="num"><span class="best">1,987.28 tok/s</span></td></tr>
+      <tr><td>Total token throughput</td><td class="num"><span class="best">3,851.64 tok/s</span></td><td class="num">2,235.69 tok/s</td></tr>
+      <tr><td>Peak output token throughput</td><td class="num"><span class="best">3,920.00 tok/s</span></td><td class="num">3,881.00 tok/s</td></tr>
+      <tr><td>Average speculative accept length</td><td class="num">6.97 tokens/step</td><td class="num"><span class="best">7.11 tokens/step</span></td></tr>
+      <tr><td>Effective concurrency</td><td class="num">57.00</td><td class="num">43.12</td></tr>
+      <tr><td>TTFT — Mean / Median / P90 / P99</td><td class="num">4,533.3 / <span class="best">1,421.2</span> / 13,745.2 / 17,219.9 ms</td><td class="num">9,750.8 / 6,168.2 / 26,426.2 / 53,042.1 ms</td></tr>
+      <tr><td>TPOT — Mean / Median / P90 / P99</td><td class="num">25.20 / 23.58 / 33.84 / 58.25 ms</td><td class="num"><span class="best">20.51 / 16.09</span> / 29.81 / 52.87 ms</td></tr>
+      <tr><td>ITL — Mean / Median / P90 / P99</td><td class="num">25.20 / 15.92 / 43.78 / 126.46 ms</td><td class="num"><span class="best">20.51 / 14.07</span> / 16.16 / 86.08 ms</td></tr>
+      <tr><td>E2E latency — Mean / Median / P99</td><td class="num">30.31 / 26.12 / 61.92 s</td><td class="num">177.76 / 146.38 / 445.03 s</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout"><p><b>High speculative draft acceptance.</b> With DFlash block verification (<code class="inline">--speculative-num-draft-tokens 8 --speculative-use-block-verification</code>), the server accepts <b>6.97–7.11 tokens per verification step</b>, holding median TPOT at <b>16.09 ms</b> (~62 tok/s per user) on 8k-token generations and reaching <b>3,920 tok/s peak output</b> across 8× RTX PRO 6000 GPUs.</p></div>
+
+  <h3 id="muse-repro">Reproducing</h3>
+  <div class="codeblock"><div class="chead"><span>shell</span><button class="copybtn">Copy</button></div><pre>kubectl apply -f models/Meta-Muse-Spark/nvfp4-g4-gke-dflash-muse-spark-agentx-hicache.yaml
+kubectl rollout status deploy/muse-spark-nvfp4-dflash-agentx-hicache --timeout=60m
+
+<span class="c"># port-forward and test with curl</span>
+kubectl port-forward svc/muse-spark-nvfp4-dflash-agentx-hicache 30084:30080
+curl -sS http://127.0.0.1:30084/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"muse-spark","messages":[{"role":"user","content":"Explain speculative decoding with DFlash in 3 bullet points."}],"max_tokens":512,"temperature":0.6}' | jq .
+
+<span class="c"># run sglang.bench_serving (1k/8k at C=64)</span>
+python3 -m sglang.bench_serving --backend sglang --host &lt;service&gt; --port 30080 \
+  --model muse-spark \
+  --tokenizer /models/Muse-Spark-Open-816B-A42B-NVFP4 \
+  --dataset-name random --random-input-len 1024 --random-output-len 8192 \
+  --random-range-ratio 1.0 --num-prompts 192 --max-concurrency 64 \
+  --request-rate inf --extra-request-body '{"ignore_eos":true,"temperature":0.0}' \
+  --flush-cache --warmup-requests 8</pre></div>
+
+  <div class="pagenav"><a href="#beam">← Reflection Beam-1.0</a><a href="#gemma4">Gemma-4-26B →</a></div>
 </section>
 
 <!-- GEMMA4 -->
@@ -1652,7 +1737,7 @@ kubectl apply -f models/Gemma4-26B/sglang-gemma4-benchmark-sweep.yaml <span clas
 <span class="c"># 10K-context sweep</span>
 kubectl apply -f models/Gemma4-26B/sglang-gemma4-10k-500-benchmark-sweep.yaml</pre></div>
   <p style="font-size:12.5px;color:var(--soft)">Full per-concurrency tables (mean and median TTFT/TPOT/ITL, P99s, completed request counts) are in the <a href="https://github.com/shivajid/sglang-rtx-pro-6000/blob/main/models/Gemma4-26B/results/master_benchmark_summary.md" target="_blank" rel="noopener">master benchmark summary ↗</a>.</p>
-  <div class="pagenav"><a href="#beam">← Reflection Beam-1.0</a><a href="#whisper">Whisper-large-v3 →</a></div>
+  <div class="pagenav"><a href="#musespark">← Meta Muse-Spark</a><a href="#whisper">Whisper-large-v3 →</a></div>
 </section>
 
 <!-- WHISPER -->
