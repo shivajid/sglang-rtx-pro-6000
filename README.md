@@ -23,6 +23,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 | Model | Benchmarked | Quantization | Setup | Output Throughput (tok/s) | Total Throughput (tok/s) | Peak Throughput (tok/s) | TPOT (ms) |
 |-------|-------------|--------------|-------|---------------------------|--------------------------|-------------------------|-----------|
+| [meta-models/Muse-Spark-Open-816B-A42B-NVFP4](./models/Meta-Muse-Spark/README.md)★ | 2026-10-19 | NVFP4 (DFlash spec. decoding) | 1 Node (8x RTX 6000) | 1987.32 | 2235.74 | 3920.00 | 16.09 |
 | [reflection/Beam-1.0-501B-A23B-NVFP4](./models/Reflection-Beam/README.md)◆ | 2026-10-16 | NVFP4 (DFlash spec. decoding) | 1 Node (8x RTX 6000) | 6952.86 | 7821.96 | 8915.00 | 15.43 |
 | [deepseek-ai/DeepSeek-V4-Flash-0731 (1-Node)](./models/DeepSeekV4-Flash-0731/README.md)# | 2026-09-04 | MXFP4 | 1 Node (8x RTX 6000) | 3880.89 | — | 6122.00 | 88.71 |
 | [zai-org/GLM-5.3-Flash](./models/GLM5.3-Flash/README.md)§ | 2026-08-29 | FP8 (tuned SM120 MoE) | 1 Node (8x RTX 6000) | 2579.80 | 9481.70 | 9481.70 | 70.60 |
@@ -48,7 +49,9 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 **[Cloudflare/clef](./models/Clef/README.md)** - Since this is a decision model (one forward pass, no output tokens; API-compatible with Typesafe AI's Jev), we did not apply the standard ISL/OSL of 1K/8K and concurrency of 512. With FP8 and a custom prefill engine, one G4 (1x RTX PRO 6000) serves 10.6K input tok/s (147 ms for a 1.5K-token request), and 2 replicas reach 21.1K tok/s.
 
-*Table last updated: October 16, 2026*
+*Table last updated: October 19, 2026*
+
+*★ Meta Muse-Spark-Open-816B-A42B-NVFP4 (816B total, 42B active) runs on a single G4 node (8× RTX PRO 6000 SM120, TP8/EP8) with DFlash speculative decoding (`RadixArk/Muse-Spark-Open-DFlash2`, 8 draft tokens with block verification), an SM120 `flashinfer_cutlass` NVFP4 MoE backend patch, and HiCache. Its row reports the `1k/8k` point at **64** concurrency (192 prompts): 1,987.32 output tok/s (2,235.74 total tok/s, 16.09 ms median TPOT, 14.07 ms median ITL, 7.11 avg accept length); the Peak column is the 3,920.00 tok/s burst peak observed on `1k/1k` @ C=64 (1,925.79 output tok/s, 3,851.58 total tok/s). See the [Meta-Muse-Spark README](./models/Meta-Muse-Spark/README.md).*
 
 *◆ Reflection Beam-1.0 NVFP4 runs on a single node with DFlash speculative decoding and HiCache. Its row is the `1k/8k` point at **128** concurrency (640 prompts), not the standard 512, taken from a 9-run sweep (`1k/1k`, `1k/8k`, `8k/1k` at C=32/64/128). The sweep used greedy decoding with `ignore_eos`, which gives a DFlash accept length of 7.2–7.9 out of 8, so read it as an upper bound. Real traffic with the model's default sampling (temperature 0.7, top_p 0.99) will accept fewer draft tokens. See the [Beam README](./models/Reflection-Beam/README.md).*
 
@@ -69,6 +72,21 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 *† Kimi-K3 on G4 saturates at **128** concurrency, not 512 — the 32-GPU cluster hits its compute ceiling well before the standard profile's concurrency, so its row is the `1k/8k` peak at C=112. The Peak column is the observed burst peak (816 tok/s). Compare it to the [GB200 row](#performance-benchmarks-latest) for the same model on different silicon, not to the 512-concurrency rows. See the [G4 report](./models/kimik3/g4/BENCHMARK_REPORT.md).*
 
 *\*\*\*\* gemma-4-26B-A4B is served with **vLLM** (not SGLang) on a single GPU, and is benchmarked with `sglang.bench_serving` as the client. Its main-table row is the `1k/8k` @ 512 concurrency point of the sweep; the Peak column is the best observed output throughput across all patterns (`1k/1k` @ 1024). Full sweep: [master_benchmark_summary.md](./models/Gemma4-26B/results/master_benchmark_summary.md).*
+
+## [meta-models/Muse-Spark-Open-816B-A42B-NVFP4](./models/Meta-Muse-Spark/README.md) Performance Benchmark
+[Detailed Configuration & Results](./models/Meta-Muse-Spark/README.md)
+
+Meta's **Muse-Spark-Open-816B-A42B** (816B MoE, 42B active, 256 experts top-8 with per-expert post-RMSNorm, hybrid sliding-window + full attention), served in NVFP4 on a **single G4 node** (8× RTX PRO 6000 SM120, TP8/EP8) with **DFlash** speculative decoding (`RadixArk/Muse-Spark-Open-DFlash2`, 8 draft tokens with block verification) and **HiCache**. Because `trtllm-gen` ships SM100/103/107 cubins only, the deployment includes an SM120 ConfigMap patch adding a `flashinfer_cutlass` NVFP4 MoE backend (expanding tokens into `(token, slot)` rows so Muse's Triton per-expert RMSNorm + weighted sum runs afterwards, with calibrated static FP4 activation scales `4.0` / `32.0`).
+
+### Benchmark Settings
+- **Setup:** 1 Node (8× RTX PRO 6000 SM120), TP8 · EP8, `--moe-runner-backend flashinfer_cutlass`, `--attention-backend trtllm_mha`, `--kv-cache-dtype bfloat16`, 262K context, `--max-running-requests 128`.
+- **Image:** `aurius/sglang-muse-spark-rtxpro6000:10182026` (slimmed 27.7 GB build of `lmsysorg/sglang:dev-muse-spark-open`).
+- **Workloads:** `1k/1k` and `1k/8k` at concurrency 64 (192 prompts each), greedy decoding with `ignore_eos`.
+
+| Workload Pattern | Output Tok/s | Total Tok/s | Peak Output Tok/s | @ Concurrency | Median TPOT | Median ITL | Median TTFT | Avg Accept Len |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **1k / 8k (Reasoning)** | **1,987.3** | 2,235.7 | 3,881.0 | 64 | 16.09 ms | 14.07 ms | 6,168.2 ms | **7.11** |
+| **1k / 1k (Balanced)** | 1,925.8 | **3,851.6** | **3,920.0** | 64 | 23.58 ms | 15.92 ms | 1,421.2 ms | 6.97 |
 
 ## [reflection/Beam-1.0-501B-A23B-NVFP4](./models/Reflection-Beam/README.md) Performance Sweep
 [Detailed Configuration & Results](./models/Reflection-Beam/)
@@ -337,6 +355,7 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
   - `KimiK2.5/`: Configurations for Kimi-K2.5.
   - `KimiK2.6/`: Agentic benchmark results and HiCache configurations.
   - `Qwen3.5-397B-A17B-FP8/`: Latency benchmarks for ultra-large MoE model.
+  - [`Meta-Muse-Spark/`](./models/Meta-Muse-Spark/README.md): Meta Muse-Spark-Open-816B-A42B NVFP4 single-node recipe (8× RTX PRO 6000 SM120, TP8/EP8, DFlash speculative decoding + HiCache, `flashinfer_cutlass` NVFP4 MoE patch, `aurius/sglang-muse-spark-rtxpro6000:10182026` image) and C=64 `1k/1k` & `1k/8k` benchmark results.
   - [`Reflection-Beam/`](./models/Reflection-Beam/README.md): Beam-1.0 NVFP4 single-node recipe (DFlash speculative decoding + HiCache, public `lmsysorg/sglang:beam` image with an SM120 patch), an ISL/OSL sweep at C=32–128, and an AgentX long-context HiCache report.
 - `gkecluster/`: Infrastructure-as-Code for GKE provisioning.
 - `benchmarking_scripts/`: Global benchmark definitions and performance scripts.
@@ -345,6 +364,7 @@ This benchmark measures the raw throughput of the **Kimi-K2.6 NVFP4** model usin
 - `gcp_g4_specs.md`: Detailed hardware and infrastructure specifications.
 
 ## Key Updates (July–October 2026)
+- **[Meta Muse-Spark-Open-816B-A42B NVFP4 on one node](./models/Meta-Muse-Spark/README.md)**: Served the 816B (A42B) Muse-Spark-Open NVFP4 checkpoint on a single G4 node (8× RTX PRO 6000 SM120, TP8/EP8) with DFlash speculative decoding (`RadixArk/Muse-Spark-Open-DFlash2`, 8 draft tokens with block verification), an SM120 `flashinfer_cutlass` NVFP4 MoE backend patch, and HiCache (`aurius/sglang-muse-spark-rtxpro6000:10182026`). Reached **1,987.3 output tok/s** (`1k/8k` @ C=64, 14.07 ms median ITL, 16.09 ms median TPOT, 7.11 avg accept length) and **3,851.6 total tok/s** / **3,920.0 peak output tok/s** (`1k/1k` @ C=64, 6.97 avg accept length).
 - **[Reflection Beam-1.0 NVFP4 on one node](./models/Reflection-Beam/README.md)**: Served the 501B (A23B) Beam-1.0 NVFP4 checkpoint on a single G4 node with DFlash speculative decoding and HiCache, using the public `lmsysorg/sglang:beam` image plus an SM120 MoE-runner patch. The sweep reached **6,953 output tok/s** (`1k/8k` @ C=128) and **13.6K total tok/s** (`8k/1k` @ C=128), with an 8.8 ms median TPOT at `1k/1k` @ C=32. These are greedy-decoding results, so they are an upper bound for DFlash. The same config is also packaged as a Helm recipe for AI Hypercomputer gpu-recipes.
 - **[DeepSeek-V4-Flash Single-Node & Hyperdisk Setup](./models/DeepSeekV4-Flash-0731/README.md)**: Built single-node (8× RTX PRO 6000) serving with dedicated 500 GB Hyperdisk Balanced volume (`dsv4-flash-hyperdisk-balanced`), completely eliminating boot disk pressure and eviction. Completed 1K/8K reasoning sweep from C=64 to 512, reaching **3,880.89 output tok/s** (peak 6,122.00 tok/s).
 - **[GLM-5.3 2-Node Validation & MoE Tuning](./models/GLM5.3/README.md)**: Deployed 2-node FP8 recipe with tuned SM120 MoE config (`E=256,N=256,K=6144,fp8_w8a8`) and Hyperdisk ML provisioning. Correctness-verified with GSM8K (0.900/0.925 accuracy). Identified that `flashinfer_sparse_mla` suffers silent corruption and established `--dsa-prefill-backend trtllm --dsa-decode-backend trtllm` as the stable path.
@@ -376,6 +396,7 @@ The `gkecluster` directory contains a comprehensive template for provisioning a 
 
 Detailed performance logs, including TTFT/TPOT latency distributions and throughput metrics, are located within each model's `results` directory:
 
+- [meta-models/Muse-Spark-Open-816B-A42B-NVFP4: models/Meta-Muse-Spark/README.md](./models/Meta-Muse-Spark/README.md)
 - [reflection/Beam-1.0-501B-A23B-NVFP4: models/Reflection-Beam/README.md](./models/Reflection-Beam/README.md) (sweep: [summary.md](./models/Reflection-Beam/results/isl-osl-sweep/summary.md))
 - [Cloudflare/clef: models/Clef/README.md](./models/Clef/README.md)
 - [zai-org/GLM-5.3-Flash: models/GLM5.3-Flash/results/benchmark_sweep_results.md](./models/GLM5.3-Flash/results/benchmark_sweep_results.md)
