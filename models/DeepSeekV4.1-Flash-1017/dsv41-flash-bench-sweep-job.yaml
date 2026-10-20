@@ -1,0 +1,137 @@
+# ISL/OSL sweep against the DeepSeek-V4.1-Flash G4 deployment: 1k/1k, 8k/1k, 1k/8k at C=32/64/128.
+# Runs on the serving node (the serving image already ships sglang.bench_serving); no GPU requested.
+#
+#   kubectl apply -f dsv41-flash-bench-sweep-job.yaml
+#   kubectl logs -f job/dsv41-flash-bench-sweep
+#   kubectl cp <pod>:/results ./results/sweep-<tag>          # within 2 h of ALL BENCHMARKS COMPLETE
+#   kubectl delete job dsv41-flash-bench-sweep                 # before re-running
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dsv41-flash-bench-sweep
+  namespace: default
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 21600
+  template:
+    metadata:
+      labels:
+        app: dsv41-flash-bench-sweep
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      nodeSelector:
+        kubernetes.io/hostname: gke-shd-gem-cluster-shd-gem-g4-gpu-po-fce8ea74-n0k0
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: bench
+        image: lmsysorg/sglang:dev-dsv41
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            cpu: "8"
+            memory: 32Gi
+        env:
+        - name: HF_HOME
+          value: /work/hf
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token-dsv41
+              key: HF_TOKEN
+        - name: TARGET_HOST
+          value: "deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local"
+        - name: TARGET_PORT
+          value: "30080"
+        - name: MODEL_NAME
+          value: "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+        # "ISL OSL C NUM_PROMPTS TAG" per run. 1k/1k and 8k/1k: 3xC prompts; 1k/8k: 2xC (min 64).
+        - name: RUNS
+          value: |
+            1024 1024 32 96 isl1k_osl1k_c32
+            1024 1024 64 192 isl1k_osl1k_c64
+            1024 1024 128 384 isl1k_osl1k_c128
+            8192 1024 32 96 isl8k_osl1k_c32
+            8192 1024 64 192 isl8k_osl1k_c64
+            8192 1024 128 384 isl8k_osl1k_c128
+            1024 8192 32 64 isl1k_osl8k_c32
+            1024 8192 64 128 isl1k_osl8k_c64
+            1024 8192 128 256 isl1k_osl8k_c128
+        args:
+        - bash
+        - -c
+        - |
+          set -u
+          mkdir -p /results /work/hf /work/tmp
+          cd /work
+          echo "Waiting for server at http://$TARGET_HOST:$TARGET_PORT/health ..."
+          for i in $(seq 1 120); do
+            curl -sf "http://$TARGET_HOST:$TARGET_PORT/health" >/dev/null && { echo "Server is healthy!"; break; }
+            sleep 5
+          done
+          curl -s "http://$TARGET_HOST:$TARGET_PORT/get_server_info" > /results/server_info.json || true
+
+          while read -r ISL OSL C N TAG; do
+            [ -z "${TAG:-}" ] && continue
+            echo "================================================================================"
+            echo "=== RUNNING $TAG: ISL=$ISL OSL=$OSL Concurrency=$C Prompts=$N $(date -u +%FT%TZ)"
+            echo "================================================================================"
+            curl -s -X POST "http://$TARGET_HOST:$TARGET_PORT/flush_cache" >/dev/null || true
+            python3 -m sglang.bench_serving \
+              --backend sglang \
+              --host "$TARGET_HOST" \
+              --port "$TARGET_PORT" \
+              --model "$MODEL_NAME" \
+              --dataset-name random \
+              --random-input-len "$ISL" \
+              --random-output-len "$OSL" \
+              --random-range-ratio 1.0 \
+              --num-prompts "$N" \
+              --max-concurrency "$C" \
+              --seed 20261020 \
+              --disable-tqdm \
+              --output-file "/results/results.jsonl" \
+              --tag "$TAG" \
+              --output-details 2>&1 | grep -vE "^\s*$|UserWarning|warnings.warn|FutureWarning" | tee "/results/$TAG.log"
+            echo "=== FINISHED $TAG rc=${PIPESTATUS[0]} $(date -u +%FT%TZ)"
+          done <<< "$RUNS"
+
+          echo "================================================================================"
+          echo "=== SUMMARY OF RESULTS ==="
+          echo "================================================================================"
+          python3 - <<'PYEOF'
+          import json, os
+          p = "/results/results.jsonl"
+          if os.path.exists(p):
+              print("| Tag | C | ISL | OSL | Completed | Output tok/s | Total tok/s | Median TTFT ms | P99 TTFT ms | Mean TPOT ms | Median ITL ms | P99 ITL ms | Accept len |")
+              print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+              for line in open(p):
+                  line = line.strip()
+                  if not line:
+                      continue
+                  try:
+                      d = json.loads(line)
+                  except Exception:
+                      continue
+                  g = lambda *ks: next((d[k] for k in ks if d.get(k) is not None), float("nan"))
+                  print("| {} | {} | {} | {} | {} | {:.1f} | {:.1f} | {:.1f} | {:.1f} | {:.2f} | {:.2f} | {:.2f} | {:.2f} |".format(
+                      d.get("tag"), d.get("max_concurrency"), d.get("random_input_len"), d.get("random_output_len"),
+                      g("completed"), g("output_throughput"), g("total_throughput", "total_token_throughput"),
+                      g("median_ttft_ms"), g("p99_ttft_ms"), g("mean_tpot_ms"), g("median_itl_ms"), g("p99_itl_ms"),
+                      g("accept_length")))
+          PYEOF
+          echo "ALL BENCHMARKS COMPLETE $(date -u +%FT%TZ)"
+          sleep 7200
+        volumeMounts:
+        - name: results
+          mountPath: /results
+        - name: work
+          mountPath: /work
+      volumes:
+      - name: results
+        emptyDir: {}
+      - name: work
+        emptyDir: {}

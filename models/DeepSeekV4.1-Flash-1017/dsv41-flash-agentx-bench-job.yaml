@@ -1,0 +1,156 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dsv41-agentx-bench
+  namespace: default
+spec:
+  activeDeadlineSeconds: 14400
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: dsv41-agentx-bench
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: gke-shd-gem-cluster-shd-gem-g4-gpu-po-fce8ea74-n0k0
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      enableServiceLinks: false
+      containers:
+      - name: agentx
+        image: python:3.12-slim
+        resources:
+          requests:
+            cpu: "16"
+            memory: 64Gi
+        env:
+        - name: RUN_NAME
+          value: dsv41-agentx-sm120
+        - name: TARGET_HOST
+          value: deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local
+        - name: TARGET_PORT
+          value: "30080"
+        - name: SERVED_MODEL
+          value: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        - name: TOKENIZER
+          value: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        - name: CONCURRENCIES
+          value: "16 32"
+        - name: BENCH_DURATION
+          value: "1800"
+        - name: DATASET
+          value: semianalysis_cc_traces_weka_062126_256k
+        - name: MAX_CONTEXT
+          value: "262144"
+        - name: SEED
+          value: "20260707"
+        - name: AGENTX_VERSION
+          value: "1.0.7"
+        - name: SMOKE
+          value: "0"
+        - name: HF_HOME
+          value: /work/hf
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token-dsv41
+              key: HF_TOKEN
+        - name: AIPERF_DATASET_CONFIGURATION_TIMEOUT
+          value: "3600"
+        - name: AIPERF_SERVICE_PROFILE_CONFIGURE_TIMEOUT
+          value: "3600"
+        - name: AIPERF_HTTP_TCP_USER_TIMEOUT
+          value: "900000"
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          set -u
+          mkdir -p /results /work/hf /work/tmp
+          cd /work
+          echo "$RUN_NAME" > /results/RUN_NAME
+
+          echo "Installing dependencies and agentx-harness==${AGENTX_VERSION}..."
+          apt-get update -qq >/dev/null && apt-get install -y -qq curl git >/dev/null 2>&1
+          python3 -m venv /work/venv && . /work/venv/bin/activate
+          pip install -q --upgrade pip
+          pip install -q "agentx-harness==${AGENTX_VERSION}" 2>&1 | tail -2
+          agentx --version 2>/dev/null || aiperf --version
+
+          echo "Waiting for target server at http://$TARGET_HOST:$TARGET_PORT/health..."
+          for i in $(seq 1 120); do
+            curl -sf "http://$TARGET_HOST:$TARGET_PORT/health" >/dev/null && break
+            sleep 5
+          done
+          echo "Server is healthy!"
+
+          curl -s "http://$TARGET_HOST:$TARGET_PORT/server_info" > /results/server_info.json || true
+
+          EXTRA=""
+          [ "$SMOKE" = "1" ] && EXTRA="--unsafe-override"
+
+          for C in $CONCURRENCIES; do
+            echo "================================================================================"
+            echo "=== AGENTX: target=$TARGET_HOST concurrency=$C duration=${BENCH_DURATION}s dataset=$DATASET $(date -u +%FT%TZ)"
+            echo "================================================================================"
+            curl -s -X POST "http://$TARGET_HOST:$TARGET_PORT/flush_cache" >/dev/null || true
+
+            agentx profile \
+              --scenario inferencex-agentx-mvp \
+              --url "http://$TARGET_HOST:$TARGET_PORT" \
+              --endpoint-type chat --streaming \
+              --model "$SERVED_MODEL" \
+              --tokenizer "$TOKENIZER" \
+              --tokenizer-trust-remote-code \
+              --public-dataset "$DATASET" \
+              --max-context-length "$MAX_CONTEXT" \
+              --concurrency "$C" \
+              --benchmark-duration "$BENCH_DURATION" \
+              --use-server-token-count \
+              --extra-inputs ignore_eos:true \
+              --cache-bust first_turn_prefix \
+              --system-idle-gap-cap-seconds 10 \
+              --trajectory-start-min-ratio 0.0 \
+              --trajectory-start-max-ratio 1.0 \
+              --random-seed "$SEED" \
+              --ui simple $EXTRA \
+              --artifact-dir "/results/artifacts-c${C}" 2>&1 | tee -a /results/agentx.log | grep -vE "^\s*$"
+          done
+
+          echo "================================================================================"
+          echo "=== SUMMARY OF AGENTX RESULTS ==="
+          echo "================================================================================"
+          python3 - <<'PYEOF'
+          import json, glob
+          for p in sorted(glob.glob("/results/artifacts-c*/**/profile_export_aiperf.json", recursive=True)):
+              try:
+                  r = json.load(open(p))
+                  md = r.get("metadata", {})
+                  print(f"\n### AGENTX_RESULT: {p}")
+                  print(f"Submission Valid: {md.get('submission_valid')}")
+                  for k in ("request_throughput", "output_token_throughput", "time_to_first_token",
+                            "inter_token_latency", "request_latency", "request_count", "error_request_count",
+                            "input_sequence_length", "output_sequence_length"):
+                      v = r.get(k)
+                      if isinstance(v, dict):
+                          print(f"  {k:28s} avg={v.get('avg')} p50={v.get('p50')} p90={v.get('p90')} p99={v.get('p99')} unit={v.get('unit')}")
+                      elif v is not None:
+                          print(f"  {k:28s} {v}")
+              except Exception as e:
+                  print(f"Error parsing {p}: {e}")
+          PYEOF
+
+          echo "AGENTX BENCHMARK COMPLETE $(date -u +%FT%TZ)"
+          sleep 7200
+        volumeMounts:
+        - name: results
+          mountPath: /results
+        - name: work
+          mountPath: /work
+      volumes:
+      - name: results
+        emptyDir: {}
+      - name: work
+        emptyDir: {}
