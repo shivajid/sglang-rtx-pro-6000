@@ -1,0 +1,532 @@
+# DeepSeek-V4.1-Flash-1017 on one GKE g4-standard-384 node (8x RTX PRO 6000 Blackwell, SM120),
+# serving flags adapted from the B200 reference command (deepseek/direction.md), the SM120 G4 recipe
+# (sglang-rtx-pro-6000/models/DeepSeekv4.1-Flash/sglang-dsv41-flash-1node.yaml, radixark
+# models/DSV4.1/flash/8k1k/launch.sh) and the Meta Muse deployment format
+# (Meta-Muse-Spark/nvfp4-g4-gke-dflash-muse-spark-agentx-hicache.yaml).
+#
+#   kubectl create secret generic hf-token-dsv41 --from-literal=HF_TOKEN=<token>   # once
+#   kubectl apply -f nvfp4-g4-gke-dspark-dsv41-agentx-hicache.yaml
+#   kubectl logs -f -l app=deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+#   kubectl port-forward svc/deepseek-v41-flash-nvfp4-dspark-agentx-hicache 30080:30080
+#
+# Target: Node gke-shd-gem-cluster-shd-gem-g4-gpu-po-fce8ea74-n0k0, Node Pool shd-gem-g4-gpu-pool-2.
+#
+# Hardware & serving architecture
+#  1. Hardware: 8x NVIDIA RTX PRO 6000 Blackwell Server Edition (SM120), 96 GB each, PCIe Gen5 fabric
+#     (no NVLink): NCCL_P2P_LEVEL=SYS for direct cross-socket P2P, NCCL_MIN_NCHANNELS=16,
+#     SGLANG_SET_CPU_AFFINITY=1 pins each TP rank to its 24-core NUMA slice.
+#  2. Quantization: FP4 routed experts (FlashInfer SM120 CUTLASS W4A8 MoE), FP8 dense weights
+#     (--fp8-gemm-backend flashinfer_cutlass), FP8 KV cache, FP4 sparse-attention indexer.
+#  3. Parallelism: TP8 + EP8 (FP4 expert intermediate dims need a multiple of 128 per rank).
+#  4. Speculative decoding: DSPARK, verify window 5 (--speculative-algorithm DSPARK
+#     --speculative-dspark-block-size 5). CUDA graphs captured for decode/verify up to bs 128
+#     (was 64: at C=128 decode ran graph-less and ITL doubled; the extra graphs cost 2.5 GiB).
+#  5. HiCache: pinned host-memory KV tier behind the GPU radix cache, ratio 2.0, write_back,
+#     page_first layout, kernel IO backend, cache-hit reporting on (--enable-cache-report).
+#  6. Engram associative memory: pinned host tables (SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1), layout
+#     "private" (the image only accepts shared|private; private = one shard per rank + all-reduce, and
+#     it got 100% huge pages on COS). ~387 GB of pinned host RAM across the 8 ranks.
+#  7. Memory sizing for 256k agent contexts (this is what crashed the first deployment):
+#       --context-length 262144 (AgentX max; checkpoint default is 1M and sizes every context-length
+#         buffer 4x larger), --mem-fraction-static 0.70, --chunked-prefill-size 8192,
+#         --max-prefill-tokens 8192, --max-running-requests 128.
+#       With 0.75 / 16384 / 32768 / 1M the engine had ~13.5 GiB of dynamic GPU memory after graph
+#       capture and OOM'd in the DSv4.1 sparse-indexer top-k (torch.cat(masks), 1.6 GiB) as soon as a
+#       16k-token chunk of a ~256k-token AgentX context was prefilled. Validated on
+#       shivaji-g4-384-spot with 1x250k, 4x128k and 8x64k+1x250k concurrent prompts before redeploy.
+#  8. Probes: stock SGLang exposes /health (503 while starting, 200 once "fired up"); it has NO /ready
+#     (that route exists only in the patched Muse image). /ready returned 404 forever, so the startup
+#     probe killed the container every 90 min. No livenessProbe on purpose: --watchdog-timeout 3600 is
+#     SGLang's own hung-scheduler killer and a second one only adds false positives under load.
+#  9. Storage: weights are downloaded once from Hugging Face into the standalone PVC
+#     dsv41-flash-hf-cache (600Gi dynamic-rwo, HF_HOME=/ssd) and reused across pod re-creations
+#     (the previous pod-scoped ephemeral volume re-downloaded 476 GB on every redeploy).
+#     Triton/FlashInfer JIT caches live on hostPath so restarts skip recompilation.
+# 10. Resources: 1Ti memory request (8 x ~64 GB HiCache host pools + 387 GB Engram + RSS), no memory
+#     limit (pinned pages are charged to the pod and a limit would OOM-kill at start-up); 32Gi /dev/shm.
+# 11. SM120 attention kernel patch (ConfigMap dsv41-flash-sm120-patch, applied with `patch -p1` at
+#     container start, source deepseek/perf/patches/sm120_mqa_sparse_decode.patch): the stock
+#     SGLANG_SM120_FLASHMLA_BACKEND=triton sparse-MLA kernel runs one CTA per (token, head) with scalar
+#     FMAs and was 54 % of decode / 67 % of prefill GPU time (there is no sparse-prefill kernel on SM120,
+#     so 8k prefill chunks go through it too). The patched kernel tiles 16 heads per CTA, gathers each KV
+#     row once, dequantizes fp8 x 2^e exactly to bf16 and runs QK^T / PV on tensor cores (tl.dot, fp32
+#     accumulation): 8-11x faster at production shapes, outputs equal to bf16 rounding. Measured on
+#     shivaji-g4-384-spot vs the previous config (bench_serving random, seed 20261020):
+#       1k/1k C=64  1207 -> 2274 out tok/s, median ITL 28.7 -> 15.3 ms
+#       1k/1k C=128 1189 -> 2956 out tok/s, median ITL 57.6 -> 23.8 ms
+#       8k/1k C=64  4585 -> 10369 total tok/s, median TTFT 6.1 -> 2.5 s
+#       1k/8k C=64  1692 -> 3254 out tok/s
+#     Stability gate re-passed (1x250k, 4x128k, 8x64k+1x250k; 21 GiB free after graph capture).
+#     Kill switch without a rebuild: SGLANG_SM120_TRITON_MQA=0 restores the stock kernel.
+#     The image default backend `flashinfer` (CUTLASS) is NOT usable at TP8: FlashInfer 0.6.18 rejects
+#     num_heads=8 / topk=128 / topk_extra=512 at warmup. Keep `triton`.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dsv41-flash-hf-cache
+  namespace: default
+  labels:
+    app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: dynamic-rwo
+  resources:
+    requests:
+      storage: 600Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dsv41-flash-sm120-patch
+  namespace: default
+  labels:
+    app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+data:
+  # Applied with `patch -d /sgl-workspace/sglang/python -p1 -N -l` at container start (see args).
+  # Source of truth: deepseek/perf/patches/sm120_mqa_sparse_decode.patch; regenerate this block with
+  #   kubectl create configmap dsv41-flash-sm120-patch \
+  #     --from-file=sm120_mqa_sparse_decode.patch=deepseek/perf/patches/sm120_mqa_sparse_decode.patch \
+  #     --dry-run=client -o yaml
+  sm120_mqa_sparse_decode.patch: |
+    --- a/sglang/kernels/ops/attention/flash_mla_sm120_triton.py
+    +++ b/sglang/kernels/ops/attention/flash_mla_sm120_triton.py
+    @@ -279,6 +279,233 @@
+         return out.unsqueeze(1), lse.unsqueeze(1)
+
+
+    +# ---------------------------------------------------------------------------
+    +# MQA-tiled variant (Task-2 perf patch): one CTA per query token covering ALL
+    +# heads.  MLA decode is MQA (one shared latent KV row per token), so the
+    +# per-(token, head) grid of the kernel above gathers every 576-byte KV row H
+    +# times and does the QK / PV math with scalar FMAs.  This kernel gathers each
+    +# KV tile once, dequantizes it to bf16 (exact: fp8 x power-of-two scale) and
+    +# runs QK^T and PV on tensor cores via tl.dot with fp32 accumulation.
+    +#
+    +#   grid = (B, ceil(H/16))  16 heads per CTA (MMA M-dim); H is 8 real heads, or 64 when the
+    +#                           backend hands over the TP-padded small-batch q (<= 64 tokens)
+    +#   scores [H_PAD, BLOCK_T] = q_nope @ kv_nope^T + q_rope @ kv_rope^T
+    +#   acc    [H_PAD, 512]    += softmax(scores) @ kv
+    +#
+    +# Numerics vs the per-head kernel: identical inputs (bf16 q, exactly dequantized
+    +# kv), fp32 accumulation; the only extra rounding is P -> bf16 before the PV
+    +# matmul (standard FlashAttention practice).  Select with
+    +# SGLANG_SM120_TRITON_MQA=1 (default); 0 restores the per-head kernel.
+    +# ---------------------------------------------------------------------------
+    +import os as _os
+    +
+    +_USE_MQA_KERNEL = _os.environ.get("SGLANG_SM120_TRITON_MQA", "1") == "1"
+    +
+    +
+    +@triton.autotune(
+    +    configs=[
+    +        triton.Config({"BLOCK_T": 16}, num_warps=4, num_stages=2),
+    +        triton.Config({"BLOCK_T": 32}, num_warps=4, num_stages=2),
+    +        triton.Config({"BLOCK_T": 32}, num_warps=8, num_stages=2),
+    +    ],
+    +    key=["topk_rounded"],
+    +)
+    +@triton.jit
+    +def _mqa_sparse_decode_kernel(
+    +    Q_ptr,
+    +    cache_fp8_ptr,
+    +    cache_uint8_ptr,
+    +    cache_bf16_ptr,
+    +    indices_ptr,
+    +    topk_len_ptr,
+    +    O_ptr,
+    +    LSE_ptr,
+    +    sm_scale: tl.float32,
+    +    page_size: tl.int32,
+    +    page_bytes: tl.int64,
+    +    scale_section_off: tl.int64,
+    +    H: tl.int32,
+    +    topk: tl.int32,
+    +    topk_rounded: tl.int32,
+    +    has_topk_len: tl.constexpr,
+    +    stride_qb: tl.int32,
+    +    stride_qh: tl.int32,
+    +    stride_ob: tl.int32,
+    +    stride_oh: tl.int32,
+    +    stride_ib: tl.int32,
+    +    NOPE_PAD: tl.constexpr,  # 512
+    +    ROPE_DIM: tl.constexpr,  # 64
+    +    NOPE_DIM_RT: tl.int32,  # 448
+    +    H_PAD: tl.constexpr,  # heads per CTA (16): bounds smem; q may carry 64 TP-padded heads
+    +    BLOCK_T: tl.constexpr,
+    +):
+    +    bid = tl.program_id(0)
+    +    hb = tl.program_id(1)
+    +
+    +    h_offs = hb * H_PAD + tl.arange(0, H_PAD)
+    +    h_mask = h_offs < H
+    +    nope_offs = tl.arange(0, NOPE_PAD)
+    +    nope_mask = nope_offs < NOPE_DIM_RT
+    +    rope_offs = tl.arange(0, ROPE_DIM)
+    +    t_offs = tl.arange(0, BLOCK_T)
+    +
+    +    # ---- Q for all heads of this token: [H_PAD, 512] / [H_PAD, 64] bf16 ----
+    +    q_base = bid * stride_qb + h_offs[:, None] * stride_qh
+    +    q_mask2 = h_mask[:, None] & nope_mask[None, :]
+    +    q_nope = tl.load(Q_ptr + q_base + nope_offs[None, :], mask=q_mask2, other=0.0).to(tl.bfloat16)
+    +    q_rope = tl.load(
+    +        Q_ptr + q_base + NOPE_DIM_RT + rope_offs[None, :], mask=h_mask[:, None], other=0.0
+    +    ).to(tl.bfloat16)
+    +
+    +    valid_topk = topk
+    +    if has_topk_len:
+    +        valid_topk = tl.load(topk_len_ptr + bid).to(tl.int32)
+    +        valid_topk = tl.minimum(valid_topk, topk)
+    +
+    +    qk_scale = sm_scale * LOG2E  # applied to fp32 scores (== scaling q first)
+    +
+    +    m_i = tl.full([H_PAD], -1e30, dtype=tl.float32)
+    +    l_i = tl.zeros([H_PAD], dtype=tl.float32)
+    +    acc_nope = tl.zeros([H_PAD, NOPE_PAD], dtype=tl.float32)
+    +    acc_rope = tl.zeros([H_PAD, ROPE_DIM], dtype=tl.float32)
+    +
+    +    group_ids = (nope_offs // 64).to(tl.int64)  # [512] scale group per dim
+    +
+    +    for tile_start in range(0, topk, BLOCK_T):
+    +        t_idx = tile_start + t_offs
+    +        t_in_bounds = t_idx < topk
+    +        t_valid = t_idx < valid_topk
+    +        raw_indices = tl.load(indices_ptr + bid * stride_ib + t_idx, mask=t_in_bounds, other=-1)
+    +        idx_valid = t_valid & (raw_indices >= 0)  # [BLOCK_T]
+    +
+    +        safe_indices = tl.where(idx_valid, raw_indices, tl.zeros_like(raw_indices))
+    +        page_ids = (safe_indices // page_size).to(tl.int64)
+    +        page_offs_t = (safe_indices % page_size).to(tl.int64)
+    +        token_data_bases = page_ids * page_bytes + page_offs_t * 576  # [BLOCK_T]
+    +
+    +        # ---- gather one KV tile for all heads ----
+    +        nope_2d_mask = idx_valid[:, None] & nope_mask[None, :]
+    +        nope_addrs = token_data_bases[:, None] + nope_offs[None, :].to(tl.int64)
+    +        kv_nope_fp8 = tl.load(cache_fp8_ptr + nope_addrs, mask=nope_2d_mask, other=0.0)
+    +
+    +        scale_bases = page_ids * page_bytes + scale_section_off + page_offs_t * 8
+    +        scale_addrs = scale_bases[:, None] + group_ids[None, :]
+    +        scale_raw = tl.load(cache_uint8_ptr + scale_addrs, mask=nope_2d_mask, other=127)
+    +        # UE8M0 -> bf16 power of two by bit placement: bf16 bits = e << 7 (exact).
+    +        scale_bf16 = (scale_raw.to(tl.uint16) << 7).to(tl.bfloat16, bitcast=True)
+    +        kv_nope = kv_nope_fp8.to(tl.bfloat16) * scale_bf16  # [BLOCK_T, 512] exact dequant
+    +        kv_nope = tl.where(nope_2d_mask, kv_nope, 0.0).to(tl.bfloat16)
+    +
+    +        rope_elem_bases = ((token_data_bases + 448) // 2).to(tl.int64)
+    +        rope_addrs = rope_elem_bases[:, None] + rope_offs[None, :].to(tl.int64)
+    +        kv_rope = tl.load(cache_bf16_ptr + rope_addrs, mask=idx_valid[:, None], other=0.0).to(
+    +            tl.bfloat16
+    +        )  # [BLOCK_T, 64]
+    +
+    +        # ---- QK^T on tensor cores: [H_PAD, BLOCK_T] fp32 ----
+    +        scores = tl.dot(q_nope, tl.trans(kv_nope)) + tl.dot(q_rope, tl.trans(kv_rope))
+    +        scores_log2 = scores * qk_scale
+    +        scores_log2 = tl.where(idx_valid[None, :], scores_log2, -1e30)
+    +
+    +        # ---- online softmax per head ----
+    +        tile_max = tl.max(scores_log2, axis=1)  # [H_PAD]
+    +        m_new = tl.maximum(m_i, tile_max)
+    +        alpha = tl.math.exp2(m_i - m_new)
+    +        p = tl.math.exp2(scores_log2 - m_new[:, None])
+    +        p = tl.where(idx_valid[None, :], p, 0.0)
+    +        l_i = l_i * alpha + tl.sum(p, axis=1)
+    +
+    +        # ---- PV on tensor cores ----
+    +        p_bf16 = p.to(tl.bfloat16)
+    +        acc_nope = acc_nope * alpha[:, None] + tl.dot(p_bf16, kv_nope)
+    +        acc_rope = acc_rope * alpha[:, None] + tl.dot(p_bf16, kv_rope)
+    +        m_i = m_new
+    +
+    +    safe_l = tl.where(l_i > 0.0, l_i, 1.0)
+    +    acc_nope = acc_nope / safe_l[:, None]
+    +    acc_rope = acc_rope / safe_l[:, None]
+    +    lse = tl.where(l_i > 0.0, m_i / LOG2E + tl.math.log(safe_l), float("-inf"))
+    +
+    +    o_base = bid * stride_ob + h_offs[:, None] * stride_oh
+    +    tl.store(O_ptr + o_base + nope_offs[None, :], acc_nope.to(tl.bfloat16), mask=q_mask2)
+    +    tl.store(
+    +        O_ptr + o_base + NOPE_DIM_RT + rope_offs[None, :],
+    +        acc_rope.to(tl.bfloat16),
+    +        mask=h_mask[:, None],
+    +    )
+    +    tl.store(LSE_ptr + bid * H + h_offs, lse, mask=h_mask)
+    +
+    +
+    +def _run_mqa_sparse_decode(
+    +    q: torch.Tensor,
+    +    k_cache: torch.Tensor,
+    +    indices: torch.Tensor,
+    +    topk_length: Optional[torch.Tensor],
+    +    softmax_scale: float,
+    +) -> Tuple[torch.Tensor, torch.Tensor]:
+    +    """Same contract as _run_triton_sparse_decode, one CTA per token for all heads."""
+    +    B, _, H, D = q.shape
+    +    num_pages = k_cache.shape[0]
+    +    page_size = k_cache.shape[1]
+    +    page_bytes = k_cache.stride(0)
+    +
+    +    flat_indices = indices.reshape(B, -1).contiguous()
+    +    topk = flat_indices.shape[1]
+    +
+    +    total_elems = num_pages * page_bytes
+    +    raw_flat = k_cache.as_strided((total_elems,), (1,))
+    +    raw_uint8 = raw_flat.view(torch.uint8)
+    +    raw_fp8 = raw_uint8.view(torch.float8_e4m3fn)
+    +    raw_bf16 = raw_uint8.view(torch.bfloat16)
+    +
+    +    q3 = q.squeeze(1)
+    +    if not q3.is_contiguous():
+    +        q3 = q3.contiguous()
+    +
+    +    out = torch.zeros(B, H, D, dtype=torch.bfloat16, device=q.device)
+    +    lse = torch.full((B, H), float("-inf"), dtype=torch.float32, device=q.device)
+    +
+    +    topk_rounded = triton.next_power_of_2(topk)
+    +    h_pad = 16  # heads per CTA; H=8 (real) -> 1 block, H=64 (TP-padded small-batch q) -> 4 blocks
+    +
+    +    _mqa_sparse_decode_kernel[(B, triton.cdiv(H, h_pad))](
+    +        q3,
+    +        raw_fp8,
+    +        raw_uint8,
+    +        raw_bf16,
+    +        flat_indices,
+    +        (
+    +            topk_length
+    +            if topk_length is not None
+    +            else torch.empty(0, device=q.device, dtype=torch.int32)
+    +        ),
+    +        out,
+    +        lse,
+    +        softmax_scale,
+    +        page_size,
+    +        int(page_bytes),
+    +        int(page_size * _TOKEN_DATA_STRIDE),
+    +        H,
+    +        topk,
+    +        topk_rounded,
+    +        topk_length is not None,
+    +        q3.stride(0),
+    +        q3.stride(1),
+    +        out.stride(0),
+    +        out.stride(1),
+    +        flat_indices.stride(0),
+    +        NOPE_PAD=512,
+    +        ROPE_DIM=_ROPE_DIM,
+    +        NOPE_DIM_RT=_NOPE_DIM,
+    +        H_PAD=h_pad,
+    +    )
+    +    return out.unsqueeze(1), lse.unsqueeze(1)
+    +
+    +
+    +if _USE_MQA_KERNEL:
+    +    _run_triton_sparse_decode_per_head = _run_triton_sparse_decode
+    +    _run_triton_sparse_decode = _run_mqa_sparse_decode  # noqa: F811
+    +
+     def _merge_partial_attn(
+         out1: torch.Tensor,
+         lse1: torch.Tensor,
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+  namespace: default
+  labels:
+    app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # a surge pod can never fit next to a running one (8 GPUs, RWO volume)
+  selector:
+    matchLabels:
+      app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+  template:
+    metadata:
+      labels:
+        app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - gke-shd-gem-cluster-shd-gem-g4-gpu-po-fce8ea74-n0k0
+      nodeSelector:
+        cloud.google.com/gke-nodepool: shd-gem-g4-gpu-pool-2
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      enableServiceLinks: false          # keep Service env vars out of the SGLANG_* namespace
+      terminationGracePeriodSeconds: 120  # sigterm_watchdog + 8 ranks + pinned pools took ~27 s
+      containers:
+      - name: sglang
+        image: lmsysorg/sglang:dev-dsv41
+        imagePullPolicy: IfNotPresent
+        args:
+        - bash
+        - -c
+        - |
+          set -e
+          # SM120 MQA sparse-MLA attention kernel (header note 11); -N -l: idempotent, whitespace-tolerant.
+          patch -d /sgl-workspace/sglang/python -p1 -N -l < /patches/sm120_mqa_sparse_decode.patch
+          exec python3 -m sglang.launch_server \
+            --model deepseek-ai/DeepSeek-V4.1-Flash-1017 \
+            --trust-remote-code \
+            --tp 8 \
+            --ep-size 8 \
+            --kv-cache-dtype fp8_e4m3 \
+            --context-length 262144 \
+            --mem-fraction-static 0.70 \
+            --enable-deepseek-v4-fp4-indexer \
+            --enable-decoder-swa-bounded-replay \
+            --cuda-graph-max-bs-decode 128 \
+            --max-running-requests 128 \
+            --fp8-gemm-backend flashinfer_cutlass \
+            --chunked-prefill-size 8192 \
+            --max-prefill-tokens 8192 \
+            --speculative-algorithm DSPARK \
+            --speculative-dspark-block-size 5 \
+            --enable-hierarchical-cache \
+            --hicache-ratio 2.0 \
+            --hicache-write-policy write_back \
+            --hicache-mem-layout page_first \
+            --hicache-io-backend kernel \
+            --enable-cache-report \
+            --reasoning-parser auto \
+            --tool-call-parser auto \
+            --watchdog-timeout 3600 \
+            --enable-metrics \
+            --host 0.0.0.0 \
+            --port 30080
+        env:
+        - name: HF_HOME
+          value: /ssd
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token-dsv41
+              key: HF_TOKEN
+        - name: SGLANG_DEFAULT_THINKING
+          value: "1"
+        - name: SGLANG_DSV41_REASONING_EFFORT
+          value: "high"
+        - name: SGLANG_SM120_FLASHMLA_BACKEND
+          value: "triton"
+        - name: SGLANG_SM120_TRITON_MQA      # patched kernel on; "0" = stock kernel (no rebuild)
+          value: "1"
+        - name: SGLANG_FP8_PAGED_MQA_LOGITS_TORCH
+          value: "0"
+        - name: SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE
+          value: "1"
+        - name: SGLANG_DSV41_ENGRAM_HOST_TABLE_LAYOUT
+          value: "private"
+        # Long agent turns: keep idle HTTP connections open (lmsys AgentX reference command).
+        - name: SGLANG_TIMEOUT_KEEP_ALIVE
+          value: "1800"
+        - name: NCCL_MIN_NCHANNELS
+          value: "16"
+        - name: NCCL_P2P_LEVEL
+          value: "SYS"
+        - name: NCCL_P2P_DISABLE
+          value: "0"
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: CUDA_DEVICE_ORDER
+          value: "PCI_BUS_ID"
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0,1,2,3,4,5,6,7"
+        - name: NCCL_DEBUG
+          value: "WARN"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: SGLANG_ENABLE_DEEP_GEMM
+          value: "0"
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        - name: SGLANG_DISABLE_DEEP_GEMM
+          value: "1"
+        - name: FLASHINFER_DISABLE_VERSION_CHECK
+          value: "1"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        ports:
+        - name: http
+          containerPort: 30080
+        resources:
+          requests:
+            cpu: "96"
+            memory: 1Ti
+            nvidia.com/gpu: "8"
+          limits:
+            nvidia.com/gpu: "8"
+        # /health: 503 while the engine is starting, 200 once ready; no generation by default.
+        startupProbe:                  # weight download (first run) + load + JIT + CUDA graphs
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 120        # 60 min
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 6
+        volumeMounts:
+        - name: hf-cache
+          mountPath: /ssd
+        - name: sglang-cache
+          mountPath: /root/.cache/sglang
+        - name: flashinfer-cache
+          mountPath: /root/.cache/flashinfer
+        - name: dshm
+          mountPath: /dev/shm
+        - name: patch
+          mountPath: /patches
+          readOnly: true
+      volumes:
+      - name: hf-cache                 # HF cache layout, written by the server on first start
+        persistentVolumeClaim:
+          claimName: dsv41-flash-hf-cache
+      - name: sglang-cache             # Triton JIT + FlashInfer autotune results survive restarts
+        hostPath:
+          path: /var/lib/sglang-cache/dsv41-flash
+          type: DirectoryOrCreate
+      - name: flashinfer-cache         # FlashInfer sm120a JIT modules survive restarts
+        hostPath:
+          path: /var/lib/flashinfer-cache/dsv41-flash
+          type: DirectoryOrCreate
+      - name: dshm                     # pods otherwise get a 64 MiB /dev/shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+      - name: patch                    # SM120 attention kernel patch (header note 11)
+        configMap:
+          name: dsv41-flash-sm120-patch
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepseek-v41-flash-nvfp4-dspark-agentx-hicache
+  namespace: default
+  labels:
+    app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+spec:
+  type: ClusterIP
+  selector:
+    app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+  ports:
+  - name: http
+    port: 30080
+    targetPort: http
