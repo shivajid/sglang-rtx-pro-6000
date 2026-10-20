@@ -1,0 +1,254 @@
+# DeepSeek-V4.1-Flash-1017 on one GKE g4-standard-384 node (8x RTX PRO 6000 Blackwell, SM120),
+# serving flags adapted from the B200 reference command (deepseek/direction.md), the SM120 G4 recipe
+# (sglang-rtx-pro-6000/models/DeepSeekv4.1-Flash/sglang-dsv41-flash-1node.yaml, radixark
+# models/DSV4.1/flash/8k1k/launch.sh) and the Meta Muse deployment format
+# (Meta-Muse-Spark/nvfp4-g4-gke-dflash-muse-spark-agentx-hicache.yaml).
+#
+#   kubectl create secret generic hf-token-dsv41 --from-literal=HF_TOKEN=<token>   # once
+#   kubectl apply -f nvfp4-g4-gke-dspark-dsv41-agentx-hicache.yaml
+#   kubectl logs -f -l app=deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+#   kubectl port-forward svc/deepseek-v41-flash-nvfp4-dspark-agentx-hicache 30080:30080
+#
+# Target: Node gke-shd-gem-cluster-shd-gem-g4-gpu-po-fce8ea74-n0k0, Node Pool shd-gem-g4-gpu-pool-2.
+#
+# Hardware & serving architecture
+#  1. Hardware: 8x NVIDIA RTX PRO 6000 Blackwell Server Edition (SM120), 96 GB each, PCIe Gen5 fabric
+#     (no NVLink): NCCL_P2P_LEVEL=SYS for direct cross-socket P2P, NCCL_MIN_NCHANNELS=16,
+#     SGLANG_SET_CPU_AFFINITY=1 pins each TP rank to its 24-core NUMA slice.
+#  2. Quantization: FP4 routed experts (FlashInfer SM120 CUTLASS W4A8 MoE), FP8 dense weights
+#     (--fp8-gemm-backend flashinfer_cutlass), FP8 KV cache, FP4 sparse-attention indexer.
+#  3. Parallelism: TP8 + EP8 (FP4 expert intermediate dims need a multiple of 128 per rank).
+#  4. Speculative decoding: DSPARK, verify window 5 (--speculative-algorithm DSPARK
+#     --speculative-dspark-block-size 5). CUDA graphs captured for decode/verify up to bs 64.
+#  5. HiCache: pinned host-memory KV tier behind the GPU radix cache, ratio 2.0, write_back,
+#     page_first layout, kernel IO backend, cache-hit reporting on (--enable-cache-report).
+#  6. Engram associative memory: pinned host tables (SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1), layout
+#     "private" (the image only accepts shared|private; private = one shard per rank + all-reduce, and
+#     it got 100% huge pages on COS). ~387 GB of pinned host RAM across the 8 ranks.
+#  7. Memory sizing for 256k agent contexts (this is what crashed the first deployment):
+#       --context-length 262144 (AgentX max; checkpoint default is 1M and sizes every context-length
+#         buffer 4x larger), --mem-fraction-static 0.70, --chunked-prefill-size 8192,
+#         --max-prefill-tokens 8192, --max-running-requests 128.
+#       With 0.75 / 16384 / 32768 / 1M the engine had ~13.5 GiB of dynamic GPU memory after graph
+#       capture and OOM'd in the DSv4.1 sparse-indexer top-k (torch.cat(masks), 1.6 GiB) as soon as a
+#       16k-token chunk of a ~256k-token AgentX context was prefilled. Validated on
+#       shivaji-g4-384-spot with 1x250k, 4x128k and 8x64k+1x250k concurrent prompts before redeploy.
+#  8. Probes: stock SGLang exposes /health (503 while starting, 200 once "fired up"); it has NO /ready
+#     (that route exists only in the patched Muse image). /ready returned 404 forever, so the startup
+#     probe killed the container every 90 min. No livenessProbe on purpose: --watchdog-timeout 3600 is
+#     SGLang's own hung-scheduler killer and a second one only adds false positives under load.
+#  9. Storage: weights are downloaded once from Hugging Face into the standalone PVC
+#     dsv41-flash-hf-cache (600Gi dynamic-rwo, HF_HOME=/ssd) and reused across pod re-creations
+#     (the previous pod-scoped ephemeral volume re-downloaded 476 GB on every redeploy).
+#     Triton/FlashInfer JIT caches live on hostPath so restarts skip recompilation.
+# 10. Resources: 1Ti memory request (8 x ~64 GB HiCache host pools + 387 GB Engram + RSS), no memory
+#     limit (pinned pages are charged to the pod and a limit would OOM-kill at start-up); 32Gi /dev/shm.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dsv41-flash-hf-cache
+  namespace: default
+  labels:
+    app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: dynamic-rwo
+  resources:
+    requests:
+      storage: 600Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+  namespace: default
+  labels:
+    app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # a surge pod can never fit next to a running one (8 GPUs, RWO volume)
+  selector:
+    matchLabels:
+      app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+  template:
+    metadata:
+      labels:
+        app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - gke-shd-gem-cluster-shd-gem-g4-gpu-po-fce8ea74-n0k0
+      nodeSelector:
+        cloud.google.com/gke-nodepool: shd-gem-g4-gpu-pool-2
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      enableServiceLinks: false          # keep Service env vars out of the SGLANG_* namespace
+      terminationGracePeriodSeconds: 120  # sigterm_watchdog + 8 ranks + pinned pools took ~27 s
+      containers:
+      - name: sglang
+        image: lmsysorg/sglang:dev-dsv41
+        imagePullPolicy: IfNotPresent
+        args:
+        - bash
+        - -c
+        - |
+          set -e
+          exec python3 -m sglang.launch_server \
+            --model deepseek-ai/DeepSeek-V4.1-Flash-1017 \
+            --trust-remote-code \
+            --tp 8 \
+            --ep-size 8 \
+            --kv-cache-dtype fp8_e4m3 \
+            --context-length 262144 \
+            --mem-fraction-static 0.70 \
+            --enable-deepseek-v4-fp4-indexer \
+            --enable-decoder-swa-bounded-replay \
+            --cuda-graph-max-bs-decode 64 \
+            --max-running-requests 128 \
+            --fp8-gemm-backend flashinfer_cutlass \
+            --chunked-prefill-size 8192 \
+            --max-prefill-tokens 8192 \
+            --speculative-algorithm DSPARK \
+            --speculative-dspark-block-size 5 \
+            --enable-hierarchical-cache \
+            --hicache-ratio 2.0 \
+            --hicache-write-policy write_back \
+            --hicache-mem-layout page_first \
+            --hicache-io-backend kernel \
+            --enable-cache-report \
+            --reasoning-parser auto \
+            --tool-call-parser auto \
+            --watchdog-timeout 3600 \
+            --enable-metrics \
+            --host 0.0.0.0 \
+            --port 30080
+        env:
+        - name: HF_HOME
+          value: /ssd
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token-dsv41
+              key: HF_TOKEN
+        - name: SGLANG_DEFAULT_THINKING
+          value: "1"
+        - name: SGLANG_DSV41_REASONING_EFFORT
+          value: "high"
+        - name: SGLANG_SM120_FLASHMLA_BACKEND
+          value: "triton"
+        - name: SGLANG_FP8_PAGED_MQA_LOGITS_TORCH
+          value: "0"
+        - name: SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE
+          value: "1"
+        - name: SGLANG_DSV41_ENGRAM_HOST_TABLE_LAYOUT
+          value: "private"
+        # Long agent turns: keep idle HTTP connections open (lmsys AgentX reference command).
+        - name: SGLANG_TIMEOUT_KEEP_ALIVE
+          value: "1800"
+        - name: NCCL_MIN_NCHANNELS
+          value: "16"
+        - name: NCCL_P2P_LEVEL
+          value: "SYS"
+        - name: NCCL_P2P_DISABLE
+          value: "0"
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: CUDA_DEVICE_ORDER
+          value: "PCI_BUS_ID"
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0,1,2,3,4,5,6,7"
+        - name: NCCL_DEBUG
+          value: "WARN"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: SGLANG_ENABLE_DEEP_GEMM
+          value: "0"
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        - name: SGLANG_DISABLE_DEEP_GEMM
+          value: "1"
+        - name: FLASHINFER_DISABLE_VERSION_CHECK
+          value: "1"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        ports:
+        - name: http
+          containerPort: 30080
+        resources:
+          requests:
+            cpu: "96"
+            memory: 1Ti
+            nvidia.com/gpu: "8"
+          limits:
+            nvidia.com/gpu: "8"
+        # /health: 503 while the engine is starting, 200 once ready; no generation by default.
+        startupProbe:                  # weight download (first run) + load + JIT + CUDA graphs
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 120        # 60 min
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 6
+        volumeMounts:
+        - name: hf-cache
+          mountPath: /ssd
+        - name: sglang-cache
+          mountPath: /root/.cache/sglang
+        - name: flashinfer-cache
+          mountPath: /root/.cache/flashinfer
+        - name: dshm
+          mountPath: /dev/shm
+      volumes:
+      - name: hf-cache                 # HF cache layout, written by the server on first start
+        persistentVolumeClaim:
+          claimName: dsv41-flash-hf-cache
+      - name: sglang-cache             # Triton JIT + FlashInfer autotune results survive restarts
+        hostPath:
+          path: /var/lib/sglang-cache/dsv41-flash
+          type: DirectoryOrCreate
+      - name: flashinfer-cache         # FlashInfer sm120a JIT modules survive restarts
+        hostPath:
+          path: /var/lib/flashinfer-cache/dsv41-flash
+          type: DirectoryOrCreate
+      - name: dshm                     # pods otherwise get a 64 MiB /dev/shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepseek-v41-flash-nvfp4-dspark-agentx-hicache
+  namespace: default
+  labels:
+    app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+spec:
+  type: ClusterIP
+  selector:
+    app: deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache
+  ports:
+  - name: http
+    port: 30080
+    targetPort: http
