@@ -2204,6 +2204,10 @@ kubectl apply -f chiv01-nccl-bench.yaml && ./run_bench_10x.sh        <span class
     show('overview');
   }
   window.addEventListener('hashchange', route);
+  document.addEventListener('click', function(ev){
+    var a = ev.target.closest && ev.target.closest('a[href^="#"]');
+    if(a && a.getAttribute('href') === location.hash){ route(); }
+  });
   route();
   document.getElementById('menubtn').addEventListener('click', function(){ sidebar.classList.toggle('open'); });
 
