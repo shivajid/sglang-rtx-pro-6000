@@ -23,6 +23,7 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 | Model | Benchmarked | Quantization | Setup | Output Throughput (tok/s) | Total Throughput (tok/s) | Peak Throughput (tok/s) | TPOT (ms) |
 |-------|-------------|--------------|-------|---------------------------|--------------------------|-------------------------|-----------|
+| [deepseek-ai/DeepSeek-V4.1-Flash-1017](./models/DeepSeekV4.1-Flash-1017/README.md)● | 2026-10-20 | FP4 experts + FP8 (DSPARK spec. decoding, SM120 kernel patch) | 1 Node (8x RTX 6000) | 4699.50 | 5286.90 | 5643.00 | 22.51 |
 | [meta-models/Muse-Spark-Open-816B-A42B-NVFP4](./models/Meta-Muse-Spark/README.md)★ | 2026-10-19 | NVFP4 (DFlash spec. decoding) | 1 Node (8x RTX 6000) | 1987.32 | 2235.74 | 3920.00 | 16.09 |
 | [reflection/Beam-1.0-501B-A23B-NVFP4](./models/Reflection-Beam/README.md)◆ | 2026-10-16 | NVFP4 (DFlash spec. decoding) | 1 Node (8x RTX 6000) | 6952.86 | 7821.96 | 8915.00 | 15.43 |
 | [deepseek-ai/DeepSeek-V4-Flash-0731 (1-Node)](./models/DeepSeekV4-Flash-0731/README.md)# | 2026-09-04 | MXFP4 | 1 Node (8x RTX 6000) | 3880.89 | — | 6122.00 | 88.71 |
@@ -49,7 +50,9 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 
 **[Cloudflare/clef](./models/Clef/README.md)** - Since this is a decision model (one forward pass, no output tokens; API-compatible with Typesafe AI's Jev), we did not apply the standard ISL/OSL of 1K/8K and concurrency of 512. With FP8 and a custom prefill engine, one G4 (1x RTX PRO 6000) serves 10.6K input tok/s (147 ms for a 1.5K-token request), and 2 replicas reach 21.1K tok/s.
 
-*Table last updated: October 19, 2026*
+*Table last updated: October 21, 2026*
+
+*● DeepSeek-V4.1-Flash-1017 runs on a single G4 node (8× RTX PRO 6000 SM120, TP8/EP8) with FP4 routed experts, FP8 dense weights and KV cache, DSPARK speculative decoding (verify window 5), HiCache and Engram host tables, plus a ConfigMap-applied SM120 attention-kernel patch (the stock per-(token, head) Triton sparse-MLA kernel was 54 % of decode / 67 % of prefill GPU time). Its row is the `1k/8k` point at **128** concurrency (256 prompts): 4,699.5 output tok/s, 5,286.9 total tok/s, 5,643 peak output tok/s, 22.51 ms median TPOT (21.0 ms median ITL), 5.28 avg accept length; `8k/1k` peaks at 12,851 total tok/s and `1k/1k` at 6,435 total tok/s, both at C=128. The same sweep on the stock kernel gave 1,817 / 4,816 / 2,661 — a 1.85–2.67× gain. Greedy decoding on random tokens, so the accept length is an upper bound (the 256K AgentX replay measured 3.3). See the [DeepSeek-V4.1-Flash-1017 README](./models/DeepSeekV4.1-Flash-1017/README.md).*
 
 *★ Meta Muse-Spark-Open-816B-A42B-NVFP4 (816B total, 42B active) runs on a single G4 node (8× RTX PRO 6000 SM120, TP8/EP8) with DFlash speculative decoding (`RadixArk/Muse-Spark-Open-DFlash2`, 8 draft tokens with block verification), an SM120 `flashinfer_cutlass` NVFP4 MoE backend patch, and HiCache. Its row reports the `1k/8k` point at **64** concurrency (192 prompts): 1,987.32 output tok/s (2,235.74 total tok/s, 16.09 ms median TPOT, 14.07 ms median ITL, 7.11 avg accept length); the Peak column is the 3,920.00 tok/s burst peak observed on `1k/1k` @ C=64 (1,925.79 output tok/s, 3,851.58 total tok/s). See the [Meta-Muse-Spark README](./models/Meta-Muse-Spark/README.md).*
 
@@ -72,6 +75,34 @@ Optimized GKE configurations and benchmarks for serving LLMs on GCP G4 instances
 *† Kimi-K3 on G4 saturates at **128** concurrency, not 512 — the 32-GPU cluster hits its compute ceiling well before the standard profile's concurrency, so its row is the `1k/8k` peak at C=112. The Peak column is the observed burst peak (816 tok/s). Compare it to the [GB200 row](#performance-benchmarks-latest) for the same model on different silicon, not to the 512-concurrency rows. See the [G4 report](./models/kimik3/g4/BENCHMARK_REPORT.md).*
 
 *\*\*\*\* gemma-4-26B-A4B is served with **vLLM** (not SGLang) on a single GPU, and is benchmarked with `sglang.bench_serving` as the client. Its main-table row is the `1k/8k` @ 512 concurrency point of the sweep; the Peak column is the best observed output throughput across all patterns (`1k/1k` @ 1024). Full sweep: [master_benchmark_summary.md](./models/Gemma4-26B/results/master_benchmark_summary.md).*
+
+## [deepseek-ai/DeepSeek-V4.1-Flash-1017](./models/DeepSeekV4.1-Flash-1017/README.md) Performance Sweep
+[Detailed Configuration & Results](./models/DeepSeekV4.1-Flash-1017/README.md)
+
+DeepSeek's **V4.1-Flash** (Oct 17, 2026 checkpoint; CED decoder with sparse attention and Engram memory) served on a **single G4 node** (8× RTX PRO 6000 SM120, TP8/EP8) with **FP4 routed experts** (FlashInfer SM120 CUTLASS W4A8 MoE), FP8 dense GEMMs and FP8 KV cache, **DSPARK** speculative decoding (verify window 5), **HiCache** and pinned-host **Engram tables**, sized for 262K-token agentic contexts. The stock `lmsysorg/sglang:dev-dsv41` image runs the SM120 sparse-MLA attention through a per-(token, head) Triton kernel that profiled at **54 % of decode and 67 % of prefill GPU time**; this recipe applies a ConfigMap patch at container start that replaces it with an MQA-tiled tensor-core kernel (8–11× faster, outputs equal to bf16 rounding) and captures decode CUDA graphs up to batch 128. Together they **roughly double throughput and halve latency** across every workload shape.
+
+### Benchmark Settings
+- **Setup:** 1 Node (8× RTX PRO 6000 SM120), TP8 · EP8, `--kv-cache-dtype fp8_e4m3 --fp8-gemm-backend flashinfer_cutlass --enable-deepseek-v4-fp4-indexer`, 262K context, `--max-running-requests 128`, `--cuda-graph-max-bs-decode 128`.
+- **Image:** `lmsysorg/sglang:dev-dsv41` + `dsv41-flash-sm120-patch` ConfigMap (`SGLANG_SM120_TRITON_MQA=1`; `0` restores the stock kernel).
+- **Speculative decoding / caches:** `--speculative-algorithm DSPARK --speculative-dspark-block-size 5`; HiCache `--hicache-ratio 2.0 --hicache-write-policy write_back --hicache-mem-layout page_first --hicache-io-backend kernel`; Engram host tables (`private` layout, ~387 GB pinned RAM).
+- **Workloads:** `1k/1k`, `8k/1k` and `1k/8k` at concurrency 32 / 64 / 128 (3 × C prompts; 2 × C for `1k/8k`), `sglang.bench_serving` random dataset, seed 20261020, greedy decoding, `/flush_cache` before each run. All nine runs in 30 minutes.
+
+| Workload Pattern | Peak Output Tok/s | Peak Total Tok/s | @ Concurrency | Median TPOT | Median ITL | Median TTFT | Avg Accept Len |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **1k / 8k (Reasoning)** | **4,699.5** | 5,286.9 | 128 | 22.51 ms | 21.02 ms | 2,526 ms | 5.28 |
+| **1k / 1k (Balanced)** | 3,217.7 | 6,435.4 | 128 | 29.28 ms | 20.92 ms | 1,305 ms | 4.75 |
+| **8k / 1k (Prefill)** | 1,427.9 | **12,851.3** | 128 | 71.26 ms | 21.02 ms | 4,820 ms | 5.24 |
+
+![DeepSeek-V4.1-Flash-1017 sweep: kernel patch vs stock kernel](./models/DeepSeekV4.1-Flash-1017/results/sweep_throughput_latency.png)
+
+**Reading the numbers:**
+- **The kernel patch is the story.** Against the stock-kernel configuration measured the same morning, output throughput rose 1.85–2.67× (e.g. `1k/8k` @ 128c: 1,817 → 4,700 tok/s; `8k/1k` @ 128c total: 4,816 → 12,851 tok/s) and median ITL fell from 16 / 27 / 56 ms to **9 / 13 / 21 ms** at C = 32 / 64 / 128 for every shape.
+- **Decode no longer saturates.** The stock build was flat at ~1.8k output tok/s on `1k/8k` from C=64 upward; the patched build scales 2.7k → 3.6k → 4.7k tok/s through C=128 with CUDA graphs covering the whole batch.
+- **`8k/1k` is prefill-bound** at ~11.4k input tok/s (12.9k total); keep C ≤ 64 there if TTFT matters (P99 TTFT 32 s at 64c, 64 s at 128c).
+- **Speculation is unchanged**: DSPARK accept length 4.75–5.30 of 5 on this greedy, random-token benchmark (an upper bound — the AgentX replay measured 3.3), so the gain is kernel/graph time, not a change in the model's outputs. Correctness was spot-checked end to end after the sweep.
+- **Agentic replay (AgentX, 256K traces, C=16, stock-kernel build):** 295 requests, 0 errors, 742 ms median TTFT, 26.8 ms median ITL, 94.7 % prompt-cache hit rate on ~96K-token average inputs.
+
+The [model README](./models/DeepSeekV4.1-Flash-1017/README.md) has the full per-run tables, percentiles, the stock-vs-patched comparison, the kernel-patch description and the deploy/benchmark Jobs.
 
 ## [meta-models/Muse-Spark-Open-816B-A42B-NVFP4](./models/Meta-Muse-Spark/README.md) Performance Benchmark
 [Detailed Configuration & Results](./models/Meta-Muse-Spark/README.md)
