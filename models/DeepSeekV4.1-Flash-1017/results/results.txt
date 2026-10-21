@@ -1,0 +1,558 @@
+
+==========
+== CUDA ==
+==========
+
+CUDA Version 13.0.3
+
+Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+This container image and its contents are governed by the NVIDIA Deep Learning Container License.
+By pulling and using the container, you accept the terms and conditions of this license:
+https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
+
+A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
+
+WARNING: The NVIDIA Driver was not detected.  GPU functionality will not be available.
+   Use the NVIDIA Container Toolkit to start this container with GPU support; see
+   https://docs.nvidia.com/datacenter/cloud-native/ .
+
+Waiting for server at http://deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local:30080/health ...
+Server is healthy!
+================================================================================
+=== RUNNING isl1k_osl1k_c32_v3: ISL=1024 OSL=1024 Concurrency=32 Prompts=96 2026-10-20T20:28:51Z
+================================================================================
+benchmark_args=Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=96, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=32, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl1k_c32_v3', header=None)
+Waiting up to 60s for http://deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local:30080/v1/models to become ready...
+Server ready in 0.0s.
+WARNING It is recommended to use the `Chat` or `Instruct` model for benchmarking.
+Because when the tokenizer counts the output tokens, if there is gibberish, it might count incorrectly.
+Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=96, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=32, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl1k_c32_v3', header=None)
+#Input tokens: 98304
+#Output tokens: 98304
+Starting warmup with 1 sequences...
+Warmup completed with 1 sequences. Starting main benchmark run...
+============ Serving Benchmark Result ============
+Backend:                                 sglang    
+Traffic request rate:                    inf       
+Max request concurrency:                 32        
+Successful requests:                     96        
+Benchmark duration (s):                  49.97     
+Total input tokens:                      98304     
+Total input text tokens:                 98304     
+Total generated tokens:                  98304     
+Total generated tokens (retokenized):    97887     
+Request throughput (req/s):              1.92      
+Input token throughput (tok/s):          1967.42   
+Output token throughput (tok/s):         1967.42   
+Peak output token throughput (tok/s):    2953.00   
+Peak concurrent requests:                42        
+Total token throughput (tok/s):          3934.84   
+Concurrency:                             27.84     
+Accept length:                           4.76      
+----------------End-to-End Latency----------------
+Mean E2E Latency (ms):                   14492.39  
+Median E2E Latency (ms):                 12895.31  
+P90 E2E Latency (ms):                    19529.19  
+P95 E2E Latency (ms):                    21331.13  
+P99 E2E Latency (ms):                    26605.99  
+---------------Time to First Token----------------
+Mean TTFT (ms):                          919.92    
+Median TTFT (ms):                        263.59    
+P90 TTFT (ms):                           2627.45   
+P95 TTFT (ms):                           2684.33   
+P99 TTFT (ms):                           2685.23   
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          13.27     
+Median TPOT (ms):                        12.06     
+P90 TPOT (ms):                           17.70     
+P95 TPOT (ms):                           18.96     
+P99 TPOT (ms):                           23.50     
+---------------Inter-Token Latency----------------
+Mean ITL (ms):                           13.27     
+Median ITL (ms):                         9.19      
+P90 ITL (ms):                            27.65     
+P95 ITL (ms):                            28.60     
+P99 ITL (ms):                            56.21     
+Max ITL (ms):                            802.10    
+==================================================
+=== FINISHED isl1k_osl1k_c32_v3 rc=0 2026-10-20T20:30:09Z
+================================================================================
+=== RUNNING isl1k_osl1k_c64_v3: ISL=1024 OSL=1024 Concurrency=64 Prompts=192 2026-10-20T20:30:09Z
+================================================================================
+benchmark_args=Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=192, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=64, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl1k_c64_v3', header=None)
+Waiting up to 60s for http://deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local:30080/v1/models to become ready...
+Server ready in 0.0s.
+WARNING It is recommended to use the `Chat` or `Instruct` model for benchmarking.
+Because when the tokenizer counts the output tokens, if there is gibberish, it might count incorrectly.
+Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=192, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=64, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl1k_c64_v3', header=None)
+#Input tokens: 196608
+#Output tokens: 196608
+Starting warmup with 1 sequences...
+Warmup completed with 1 sequences. Starting main benchmark run...
+============ Serving Benchmark Result ============
+Backend:                                 sglang    
+Traffic request rate:                    inf       
+Max request concurrency:                 64        
+Successful requests:                     192       
+Benchmark duration (s):                  73.95     
+Total input tokens:                      196608    
+Total input text tokens:                 196608    
+Total generated tokens:                  196608    
+Total generated tokens (retokenized):    195237    
+Request throughput (req/s):              2.60      
+Input token throughput (tok/s):          2658.59   
+Output token throughput (tok/s):         2658.59   
+Peak output token throughput (tok/s):    4200.00   
+Peak concurrent requests:                81        
+Total token throughput (tok/s):          5317.17   
+Concurrency:                             57.65     
+Accept length:                           4.78      
+----------------End-to-End Latency----------------
+Mean E2E Latency (ms):                   22205.27  
+Median E2E Latency (ms):                 20452.46  
+P90 E2E Latency (ms):                    30354.23  
+P95 E2E Latency (ms):                    32180.77  
+P99 E2E Latency (ms):                    36294.38  
+---------------Time to First Token----------------
+Mean TTFT (ms):                          1285.59   
+Median TTFT (ms):                        318.23    
+P90 TTFT (ms):                           3907.08   
+P95 TTFT (ms):                           4371.72   
+P99 TTFT (ms):                           4450.61   
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          20.45     
+Median TPOT (ms):                        18.85     
+P90 TPOT (ms):                           27.95     
+P95 TPOT (ms):                           30.52     
+P99 TPOT (ms):                           35.22     
+---------------Inter-Token Latency----------------
+Mean ITL (ms):                           20.45     
+Median ITL (ms):                         13.36     
+P90 ITL (ms):                            33.14     
+P95 ITL (ms):                            41.49     
+P99 ITL (ms):                            95.37     
+Max ITL (ms):                            3190.28   
+==================================================
+=== FINISHED isl1k_osl1k_c64_v3 rc=0 2026-10-20T20:31:38Z
+================================================================================
+=== RUNNING isl1k_osl1k_c128_v3: ISL=1024 OSL=1024 Concurrency=128 Prompts=384 2026-10-20T20:31:38Z
+================================================================================
+benchmark_args=Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=384, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=128, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl1k_c128_v3', header=None)
+Waiting up to 60s for http://deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local:30080/v1/models to become ready...
+Server ready in 0.0s.
+WARNING It is recommended to use the `Chat` or `Instruct` model for benchmarking.
+Because when the tokenizer counts the output tokens, if there is gibberish, it might count incorrectly.
+Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=384, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=128, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl1k_c128_v3', header=None)
+#Input tokens: 393216
+#Output tokens: 393216
+Starting warmup with 1 sequences...
+Warmup completed with 1 sequences. Starting main benchmark run...
+============ Serving Benchmark Result ============
+Backend:                                 sglang    
+Traffic request rate:                    inf       
+Max request concurrency:                 128       
+Successful requests:                     384       
+Benchmark duration (s):                  122.21    
+Total input tokens:                      393216    
+Total input text tokens:                 393216    
+Total generated tokens:                  393216    
+Total generated tokens (retokenized):    390318    
+Request throughput (req/s):              3.14      
+Input token throughput (tok/s):          3217.67   
+Output token throughput (tok/s):         3217.67   
+Peak output token throughput (tok/s):    5220.00   
+Peak concurrent requests:                173       
+Total token throughput (tok/s):          6435.35   
+Concurrency:                             109.69    
+Accept length:                           4.75      
+----------------End-to-End Latency----------------
+Mean E2E Latency (ms):                   34908.20  
+Median E2E Latency (ms):                 32516.97  
+P90 E2E Latency (ms):                    46136.75  
+P95 E2E Latency (ms):                    53512.73  
+P99 E2E Latency (ms):                    64638.75  
+---------------Time to First Token----------------
+Mean TTFT (ms):                          2616.93   
+Median TTFT (ms):                        1305.02   
+P90 TTFT (ms):                           7110.05   
+P95 TTFT (ms):                           8169.04   
+P99 TTFT (ms):                           8740.29   
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          31.57     
+Median TPOT (ms):                        29.28     
+P90 TPOT (ms):                           42.56     
+P95 TPOT (ms):                           48.32     
+P99 TPOT (ms):                           58.26     
+---------------Inter-Token Latency----------------
+Mean ITL (ms):                           31.57     
+Median ITL (ms):                         20.92     
+P90 ITL (ms):                            62.54     
+P95 ITL (ms):                            77.04     
+P99 ITL (ms):                            134.06    
+Max ITL (ms):                            4003.52   
+==================================================
+=== FINISHED isl1k_osl1k_c128_v3 rc=0 2026-10-20T20:33:55Z
+================================================================================
+=== RUNNING isl8k_osl1k_c32_v3: ISL=8192 OSL=1024 Concurrency=32 Prompts=96 2026-10-20T20:33:55Z
+================================================================================
+benchmark_args=Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=96, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=8192, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=32, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl8k_osl1k_c32_v3', header=None)
+Waiting up to 60s for http://deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local:30080/v1/models to become ready...
+Server ready in 0.0s.
+WARNING It is recommended to use the `Chat` or `Instruct` model for benchmarking.
+Because when the tokenizer counts the output tokens, if there is gibberish, it might count incorrectly.
+Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=96, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=8192, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=32, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl8k_osl1k_c32_v3', header=None)
+#Input tokens: 786432
+#Output tokens: 98304
+Starting warmup with 1 sequences...
+Warmup completed with 1 sequences. Starting main benchmark run...
+============ Serving Benchmark Result ============
+Backend:                                 sglang    
+Traffic request rate:                    inf       
+Max request concurrency:                 32        
+Successful requests:                     96        
+Benchmark duration (s):                  82.80     
+Total input tokens:                      786432    
+Total input text tokens:                 786432    
+Total generated tokens:                  98304     
+Total generated tokens (retokenized):    98290     
+Request throughput (req/s):              1.16      
+Input token throughput (tok/s):          9497.69   
+Output token throughput (tok/s):         1187.21   
+Peak output token throughput (tok/s):    3305.00   
+Peak concurrent requests:                42        
+Total token throughput (tok/s):          10684.90  
+Concurrency:                             30.62     
+Accept length:                           5.29      
+----------------End-to-End Latency----------------
+Mean E2E Latency (ms):                   26413.47  
+Median E2E Latency (ms):                 25169.81  
+P90 E2E Latency (ms):                    39194.28  
+P95 E2E Latency (ms):                    41638.16  
+P99 E2E Latency (ms):                    44047.12  
+---------------Time to First Token----------------
+Mean TTFT (ms):                          3765.27   
+Median TTFT (ms):                        1113.16   
+P90 TTFT (ms):                           12011.52  
+P95 TTFT (ms):                           14432.70  
+P99 TTFT (ms):                           15949.69  
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          22.14     
+Median TPOT (ms):                        21.97     
+P90 TPOT (ms):                           31.67     
+P95 TPOT (ms):                           34.78     
+P99 TPOT (ms):                           37.45     
+---------------Inter-Token Latency----------------
+Mean ITL (ms):                           22.14     
+Median ITL (ms):                         8.98      
+P90 ITL (ms):                            26.67     
+P95 ITL (ms):                            93.42     
+P99 ITL (ms):                            142.10    
+Max ITL (ms):                            3801.06   
+==================================================
+=== FINISHED isl8k_osl1k_c32_v3 rc=0 2026-10-20T20:35:33Z
+================================================================================
+=== RUNNING isl8k_osl1k_c64_v3: ISL=8192 OSL=1024 Concurrency=64 Prompts=192 2026-10-20T20:35:33Z
+================================================================================
+benchmark_args=Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=192, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=8192, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=64, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl8k_osl1k_c64_v3', header=None)
+Waiting up to 60s for http://deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local:30080/v1/models to become ready...
+Server ready in 0.0s.
+WARNING It is recommended to use the `Chat` or `Instruct` model for benchmarking.
+Because when the tokenizer counts the output tokens, if there is gibberish, it might count incorrectly.
+Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=192, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=8192, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=64, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl8k_osl1k_c64_v3', header=None)
+#Input tokens: 1572864
+#Output tokens: 196608
+Starting warmup with 1 sequences...
+Warmup completed with 1 sequences. Starting main benchmark run...
+============ Serving Benchmark Result ============
+Backend:                                 sglang    
+Traffic request rate:                    inf       
+Max request concurrency:                 64        
+Successful requests:                     192       
+Benchmark duration (s):                  148.00    
+Total input tokens:                      1572864   
+Total input text tokens:                 1572864   
+Total generated tokens:                  196608    
+Total generated tokens (retokenized):    196492    
+Request throughput (req/s):              1.30      
+Input token throughput (tok/s):          10627.30  
+Output token throughput (tok/s):         1328.41   
+Peak output token throughput (tok/s):    4452.00   
+Peak concurrent requests:                80        
+Total token throughput (tok/s):          11955.71  
+Concurrency:                             62.12     
+Accept length:                           5.21      
+----------------End-to-End Latency----------------
+Mean E2E Latency (ms):                   47884.73  
+Median E2E Latency (ms):                 46461.96  
+P90 E2E Latency (ms):                    71633.89  
+P95 E2E Latency (ms):                    77335.25  
+P99 E2E Latency (ms):                    82597.91  
+---------------Time to First Token----------------
+Mean TTFT (ms):                          6777.50   
+Median TTFT (ms):                        1599.10   
+P90 TTFT (ms):                           23019.96  
+P95 TTFT (ms):                           27897.59  
+P99 TTFT (ms):                           31796.67  
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          40.18     
+Median TPOT (ms):                        39.42     
+P90 TPOT (ms):                           59.90     
+P95 TPOT (ms):                           64.85     
+P99 TPOT (ms):                           70.79     
+---------------Inter-Token Latency----------------
+Mean ITL (ms):                           40.18     
+Median ITL (ms):                         13.29     
+P90 ITL (ms):                            97.76     
+P95 ITL (ms):                            117.39    
+P99 ITL (ms):                            292.29    
+Max ITL (ms):                            10420.26  
+==================================================
+=== FINISHED isl8k_osl1k_c64_v3 rc=0 2026-10-20T20:38:16Z
+================================================================================
+=== RUNNING isl8k_osl1k_c128_v3: ISL=8192 OSL=1024 Concurrency=128 Prompts=384 2026-10-20T20:38:16Z
+================================================================================
+benchmark_args=Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=384, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=8192, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=128, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl8k_osl1k_c128_v3', header=None)
+Waiting up to 60s for http://deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local:30080/v1/models to become ready...
+Server ready in 0.0s.
+WARNING It is recommended to use the `Chat` or `Instruct` model for benchmarking.
+Because when the tokenizer counts the output tokens, if there is gibberish, it might count incorrectly.
+Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=384, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=8192, random_output_len=1024, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=128, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl8k_osl1k_c128_v3', header=None)
+#Input tokens: 3145728
+#Output tokens: 393216
+Starting warmup with 1 sequences...
+Warmup completed with 1 sequences. Starting main benchmark run...
+============ Serving Benchmark Result ============
+Backend:                                 sglang    
+Traffic request rate:                    inf       
+Max request concurrency:                 128       
+Successful requests:                     384       
+Benchmark duration (s):                  275.38    
+Total input tokens:                      3145728   
+Total input text tokens:                 3145728   
+Total generated tokens:                  393216    
+Total generated tokens (retokenized):    393126    
+Request throughput (req/s):              1.39      
+Input token throughput (tok/s):          11423.35  
+Output token throughput (tok/s):         1427.92   
+Peak output token throughput (tok/s):    5521.00   
+Peak concurrent requests:                177       
+Total token throughput (tok/s):          12851.27  
+Concurrency:                             124.78    
+Accept length:                           5.24      
+----------------End-to-End Latency----------------
+Mean E2E Latency (ms):                   89482.66  
+Median E2E Latency (ms):                 86102.65  
+P90 E2E Latency (ms):                    136089.94 
+P95 E2E Latency (ms):                    146971.68 
+P99 E2E Latency (ms):                    156754.34 
+---------------Time to First Token----------------
+Mean TTFT (ms):                          15024.41  
+Median TTFT (ms):                        4819.90   
+P90 TTFT (ms):                           45938.15  
+P95 TTFT (ms):                           56188.46  
+P99 TTFT (ms):                           64011.71  
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          72.78     
+Median TPOT (ms):                        71.26     
+P90 TPOT (ms):                           111.23    
+P95 TPOT (ms):                           120.18    
+P99 TPOT (ms):                           135.54    
+---------------Inter-Token Latency----------------
+Mean ITL (ms):                           72.78     
+Median ITL (ms):                         21.02     
+P90 ITL (ms):                            126.22    
+P95 ITL (ms):                            212.85    
+P99 ITL (ms):                            610.60    
+Max ITL (ms):                            22577.52  
+==================================================
+=== FINISHED isl8k_osl1k_c128_v3 rc=0 2026-10-20T20:43:07Z
+================================================================================
+=== RUNNING isl1k_osl8k_c32_v3: ISL=1024 OSL=8192 Concurrency=32 Prompts=64 2026-10-20T20:43:07Z
+================================================================================
+benchmark_args=Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=64, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=8192, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=32, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl8k_c32_v3', header=None)
+Waiting up to 60s for http://deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local:30080/v1/models to become ready...
+Server ready in 0.0s.
+WARNING It is recommended to use the `Chat` or `Instruct` model for benchmarking.
+Because when the tokenizer counts the output tokens, if there is gibberish, it might count incorrectly.
+Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=64, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=8192, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=32, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl8k_c32_v3', header=None)
+#Input tokens: 65536
+#Output tokens: 524288
+Starting warmup with 1 sequences...
+Warmup completed with 1 sequences. Starting main benchmark run...
+============ Serving Benchmark Result ============
+Backend:                                 sglang    
+Traffic request rate:                    inf       
+Max request concurrency:                 32        
+Successful requests:                     64        
+Benchmark duration (s):                  193.75    
+Total input tokens:                      65536     
+Total input text tokens:                 65536     
+Total generated tokens:                  524288    
+Total generated tokens (retokenized):    521289    
+Request throughput (req/s):              0.33      
+Input token throughput (tok/s):          338.26    
+Output token throughput (tok/s):         2706.07   
+Peak output token throughput (tok/s):    3365.00   
+Peak concurrent requests:                37        
+Total token throughput (tok/s):          3044.32   
+Concurrency:                             27.85     
+Accept length:                           5.29      
+----------------End-to-End Latency----------------
+Mean E2E Latency (ms):                   84317.76  
+Median E2E Latency (ms):                 79795.49  
+P90 E2E Latency (ms):                    100897.74 
+P95 E2E Latency (ms):                    104774.74 
+P99 E2E Latency (ms):                    119841.57 
+---------------Time to First Token----------------
+Mean TTFT (ms):                          1054.19   
+Median TTFT (ms):                        583.83    
+P90 TTFT (ms):                           2275.44   
+P95 TTFT (ms):                           2292.02   
+P99 TTFT (ms):                           2292.39   
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          10.17     
+Median TPOT (ms):                        9.65      
+P90 TPOT (ms):                           12.08     
+P95 TPOT (ms):                           12.58     
+P99 TPOT (ms):                           14.35     
+---------------Inter-Token Latency----------------
+Mean ITL (ms):                           10.17     
+Median ITL (ms):                         9.04      
+P90 ITL (ms):                            13.42     
+P95 ITL (ms):                            17.85     
+P99 ITL (ms):                            28.70     
+Max ITL (ms):                            1562.23   
+==================================================
+=== FINISHED isl1k_osl8k_c32_v3 rc=0 2026-10-20T20:46:36Z
+================================================================================
+=== RUNNING isl1k_osl8k_c64_v3: ISL=1024 OSL=8192 Concurrency=64 Prompts=128 2026-10-20T20:46:36Z
+================================================================================
+benchmark_args=Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=128, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=8192, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=64, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl8k_c64_v3', header=None)
+Waiting up to 60s for http://deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local:30080/v1/models to become ready...
+Server ready in 0.0s.
+WARNING It is recommended to use the `Chat` or `Instruct` model for benchmarking.
+Because when the tokenizer counts the output tokens, if there is gibberish, it might count incorrectly.
+Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=128, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=8192, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=64, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl8k_c64_v3', header=None)
+#Input tokens: 131072
+#Output tokens: 1048576
+Starting warmup with 1 sequences...
+Warmup completed with 1 sequences. Starting main benchmark run...
+============ Serving Benchmark Result ============
+Backend:                                 sglang    
+Traffic request rate:                    inf       
+Max request concurrency:                 64        
+Successful requests:                     128       
+Benchmark duration (s):                  292.05    
+Total input tokens:                      131072    
+Total input text tokens:                 131072    
+Total generated tokens:                  1048576   
+Total generated tokens (retokenized):    1043817   
+Request throughput (req/s):              0.44      
+Input token throughput (tok/s):          448.80    
+Output token throughput (tok/s):         3590.42   
+Peak output token throughput (tok/s):    4577.00   
+Peak concurrent requests:                71        
+Total token throughput (tok/s):          4039.22   
+Concurrency:                             54.13     
+Accept length:                           5.30      
+----------------End-to-End Latency----------------
+Mean E2E Latency (ms):                   123496.39 
+Median E2E Latency (ms):                 117654.23 
+P90 E2E Latency (ms):                    142777.43 
+P95 E2E Latency (ms):                    161132.38 
+P99 E2E Latency (ms):                    188936.33 
+---------------Time to First Token----------------
+Mean TTFT (ms):                          1710.74   
+Median TTFT (ms):                        980.93    
+P90 TTFT (ms):                           4416.13   
+P95 TTFT (ms):                           4464.65   
+P99 TTFT (ms):                           4491.23   
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          14.87     
+Median TPOT (ms):                        14.17     
+P90 TPOT (ms):                           17.26     
+P95 TPOT (ms):                           19.34     
+P99 TPOT (ms):                           22.81     
+---------------Inter-Token Latency----------------
+Mean ITL (ms):                           14.87     
+Median ITL (ms):                         13.18     
+P90 ITL (ms):                            19.61     
+P95 ITL (ms):                            26.33     
+P99 ITL (ms):                            41.09     
+Max ITL (ms):                            3196.06   
+==================================================
+=== FINISHED isl1k_osl8k_c64_v3 rc=0 2026-10-20T20:51:44Z
+================================================================================
+=== RUNNING isl1k_osl8k_c128_v3: ISL=1024 OSL=8192 Concurrency=128 Prompts=256 2026-10-20T20:51:44Z
+================================================================================
+benchmark_args=Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=256, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=8192, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=128, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl8k_c128_v3', header=None)
+Waiting up to 60s for http://deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local:30080/v1/models to become ready...
+Server ready in 0.0s.
+WARNING It is recommended to use the `Chat` or `Instruct` model for benchmarking.
+Because when the tokenizer counts the output tokens, if there is gibberish, it might count incorrectly.
+Namespace(backend='sglang', base_url=None, host='deepseek-v41-flash-nvfp4-dspark-agentx-hicache.default.svc.cluster.local', port=30080, ready_check_timeout_sec=60, dataset_name='random', dataset_path='', dataset_offset=0, agentic_max_turns=None, speed_bench_category=None, speed_bench_output_len=512, model='deepseek-ai/DeepSeek-V4.1-Flash-1017', served_model_name=None, tokenizer=None, num_prompts=256, sharegpt_output_len=None, sharegpt_context_len=None, random_input_len=1024, random_output_len=8192, random_range_ratio=1.0, image_count=1, image_resolution='1080p', random_image_count=False, image_format='jpeg', image_content='random', request_rate=inf, use_trace_timestamps=False, max_concurrency=128, output_file='/results/results.jsonl', output_details=True, print_requests=False, disable_tqdm=True, disable_stream=False, return_logprob=False, top_logprobs_num=0, token_ids_logprob=None, logprob_start_len=-1, return_routed_experts=False, cache_report=False, seed=20261020, disable_ignore_eos=False, temperature=0.0, top_p=1.0, extra_request_body=None, apply_chat_template=False, profile=False, plot_throughput=False, profile_activities=['CPU', 'GPU'], profile_start_step=None, profile_steps=None, profile_num_steps=None, profile_by_stage=False, profile_stages=None, profile_output_dir=None, profile_prefix=None, lora_name=None, lora_request_distribution='uniform', lora_zipf_alpha=1.5, prompt_suffix='', pd_separated=False, profile_prefill_url=None, profile_decode_url=None, flush_cache=False, flush_cache_timeout=60.0, warmup_requests=1, tokenize_prompt=False, gsp_num_groups=64, gsp_prompts_per_group=16, gsp_system_prompt_len=2048, gsp_question_len=128, gsp_output_len=256, gsp_range_ratio=1.0, gsp_fast_prepare=False, gsp_send_routing_key=False, gsp_num_turns=1, gsp_ordered=False, gsp_group_distribution='uniform', gsp_zipf_alpha=None, mooncake_slowdown_factor=1.0, mooncake_num_rounds=1, mooncake_workload='conversation', fake_prefill=False, tag='isl1k_osl8k_c128_v3', header=None)
+#Input tokens: 262144
+#Output tokens: 2097152
+Starting warmup with 1 sequences...
+Warmup completed with 1 sequences. Starting main benchmark run...
+============ Serving Benchmark Result ============
+Backend:                                 sglang    
+Traffic request rate:                    inf       
+Max request concurrency:                 128       
+Successful requests:                     256       
+Benchmark duration (s):                  446.25    
+Total input tokens:                      262144    
+Total input text tokens:                 262144    
+Total generated tokens:                  2097152   
+Total generated tokens (retokenized):    2090105   
+Request throughput (req/s):              0.57      
+Input token throughput (tok/s):          587.43    
+Output token throughput (tok/s):         4699.47   
+Peak output token throughput (tok/s):    5643.00   
+Peak concurrent requests:                162       
+Total token throughput (tok/s):          5286.90   
+Concurrency:                             113.32    
+Accept length:                           5.28      
+----------------End-to-End Latency----------------
+Mean E2E Latency (ms):                   197538.09 
+Median E2E Latency (ms):                 188541.92 
+P90 E2E Latency (ms):                    233737.51 
+P95 E2E Latency (ms):                    248793.52 
+P99 E2E Latency (ms):                    278230.60 
+---------------Time to First Token----------------
+Mean TTFT (ms):                          3968.04   
+Median TTFT (ms):                        2526.28   
+P90 TTFT (ms):                           8063.27   
+P95 TTFT (ms):                           8794.99   
+P99 TTFT (ms):                           17658.07  
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          23.63     
+Median TPOT (ms):                        22.51     
+P90 TPOT (ms):                           28.15     
+P95 TPOT (ms):                           29.62     
+P99 TPOT (ms):                           33.41     
+---------------Inter-Token Latency----------------
+Mean ITL (ms):                           23.63     
+Median ITL (ms):                         21.02     
+P90 ITL (ms):                            31.28     
+P95 ITL (ms):                            41.75     
+P99 ITL (ms):                            67.66     
+Max ITL (ms):                            7604.73   
+==================================================
+=== FINISHED isl1k_osl8k_c128_v3 rc=0 2026-10-20T20:59:30Z
+================================================================================
+=== SUMMARY OF RESULTS ===
+================================================================================
+| Tag | C | ISL | OSL | Completed | Output tok/s | Total tok/s | Median TTFT ms | P99 TTFT ms | Mean TPOT ms | Median ITL ms | P99 ITL ms | Accept len |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| isl1k_osl1k_c32_v3 | 32 | 1024 | 1024 | 96 | 1967.4 | 3934.8 | 263.6 | 2685.2 | 13.27 | 9.19 | 56.21 | 4.76 |
+| isl1k_osl1k_c64_v3 | 64 | 1024 | 1024 | 192 | 2658.6 | 5317.2 | 318.2 | 4450.6 | 20.45 | 13.36 | 95.37 | 4.78 |
+| isl1k_osl1k_c128_v3 | 128 | 1024 | 1024 | 384 | 3217.7 | 6435.3 | 1305.0 | 8740.3 | 31.57 | 20.92 | 134.06 | 4.75 |
+| isl8k_osl1k_c32_v3 | 32 | 8192 | 1024 | 96 | 1187.2 | 10684.9 | 1113.2 | 15949.7 | 22.14 | 8.98 | 142.10 | 5.29 |
+| isl8k_osl1k_c64_v3 | 64 | 8192 | 1024 | 192 | 1328.4 | 11955.7 | 1599.1 | 31796.7 | 40.18 | 13.29 | 292.29 | 5.21 |
+| isl8k_osl1k_c128_v3 | 128 | 8192 | 1024 | 384 | 1427.9 | 12851.3 | 4819.9 | 64011.7 | 72.78 | 21.02 | 610.60 | 5.24 |
+| isl1k_osl8k_c32_v3 | 32 | 1024 | 8192 | 64 | 2706.1 | 3044.3 | 583.8 | 2292.4 | 10.17 | 9.04 | 28.70 | 5.29 |
+| isl1k_osl8k_c64_v3 | 64 | 1024 | 8192 | 128 | 3590.4 | 4039.2 | 980.9 | 4491.2 | 14.87 | 13.18 | 41.09 | 5.30 |
+| isl1k_osl8k_c128_v3 | 128 | 1024 | 8192 | 256 | 4699.5 | 5286.9 | 2526.3 | 17658.1 | 23.63 | 21.02 | 67.66 | 5.28 |
+ALL BENCHMARKS COMPLETE 2026-10-20T20:59:31Z
