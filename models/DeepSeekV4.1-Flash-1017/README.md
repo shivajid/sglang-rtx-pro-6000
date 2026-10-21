@@ -172,6 +172,14 @@ The sweep Job's log for the run below is in [`results/results.txt`](./results/re
 
 Measured with `python3 -m sglang.bench_serving --backend sglang --dataset-name random --random-range-ratio 1.0 --seed 20261020` (default `temperature 0.0`, 1 warm-up request, `/flush_cache` before every run) from a pod on the same node against the [`nvfp4-g4-gke-dspark-dsv41-hicach-kernel-ptch.yaml`](./nvfp4-g4-gke-dspark-dsv41-hicach-kernel-ptch.yaml) deployment (pod `deepseek-v41-flash-nvfp4-g4-dspark-agentx-hicache-6c8fdb8fxmmf6`). Prompt counts are 3×C for 1k/1k and 8k/1k, and 2×C (min 64) for 1k/8k; the nine runs took 30 minutes end to end (20:29–20:59 UTC). Raw log: [`results/results.txt`](./results/results.txt).
 
+![Throughput and latency vs concurrency: kernel patch (solid) vs stock kernel (dashed)](./results/sweep_throughput_latency.png)
+
+*Solid lines: this recipe (kernel patch + decode CUDA graphs to bs 128). Dashed: the stock-kernel configuration measured the same morning. Top: output and total token throughput; bottom: median inter-token latency and median TTFT (log scale).*
+
+![Speed-up of the kernel patch over the stock configuration](./results/sweep_speedup.png)
+
+*Per-run speed-up: total throughput (left) and median ITL reduction (right), patched vs stock.*
+
 #### Throughput & Speculative Decoding
 
 | Scenario (ISL / OSL) | C | Completed | Duration (s) | Req/s | Input tok/s | Output tok/s | Total tok/s | Peak Output tok/s | Avg Accept Len |
@@ -261,6 +269,10 @@ Same benchmark, same seed, same node, run the same morning against [`nvfp4-g4-gk
 | **`1k_8k`** | 128 | 1,817 → **4,700** (2.59×) | 2,044 → **5,287** | 6,415 → 2,526 | 61.8 → 23.6 | 55.9 → **21.0** | 171 → 68 |
 
 #### Observations
+
+![Tail latency vs concurrency: P99 ITL and mean TPOT, kernel patch vs stock](./results/sweep_tail_latency.png)
+
+*P99 inter-token latency (log scale) and mean TPOT vs concurrency — solid = kernel patch, dashed = stock kernel.*
 
 - **Decode no longer saturates.** With the stock kernel, 1k/8k was flat at ~1.8k output tok/s for `C=64` and `C=128`; it now scales 2.7k → 3.6k → 4.7k tok/s from `C=32` → `C=128`, and 1k/1k reaches 3.2k output / 6.4k total tok/s at `C=128` with CUDA graphs covering the whole batch.
 - **Prefill is 2.3–2.7× faster.** 8k/1k tops out at ~11.4k input tok/s (12.9k total) instead of ~4.3k, because the same attention kernel served the 8k prefill chunks; P99 TTFT at `C=128` fell from 172 s to 64 s. Prefill is still the bound for prompt-heavy traffic — keep `C ≤ 64` there if TTFT matters.
